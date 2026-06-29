@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vonixx Performance Center | Logística</title>
+    <link rel="stylesheet" href="styles.css?v=20260626-compact-launches" />
+  </head>
+  <body>
+    <section class="login-shell" id="loginScreen">
+      <div class="login-brand">
+        <div class="login-hero-content">
+          <div class="login-logo-mark" role="img" aria-label="VONIXX"></div>
+          <h1 class="login-statement">
+            <span>Proporcionando</span>
+            <strong>soluções</strong>
+            <strong>inovadoras</strong>
+            <span>para cuidados</span>
+            <span>com o veículo</span>
+          </h1>
+        </div>
+      </div>
+
+      <div class="login-panel">
+        <form class="login-card" id="loginForm">
+          <div>
+            <p class="eyebrow">Acesso por setor</p>
+            <h2>Indicadores Operacionais</h2>
+          </div>
+          <label>
+            Setor
+            <select name="sector" id="loginSector" required></select>
+          </label>
+          <label>
+            Senha
+            <input autocomplete="current-password" name="password" required type="password" />
+          </label>
+          <p class="form-hint">Gestão Integrada de Performance.</p>
+          <p class="form-error" id="loginError"></p>
+          <button class="primary-button" type="submit">Entrar</button>
+        </form>
+      </div>
+    </section>
+
+    <div class="app-shell hidden" id="appShell">
+      <aside class="sidebar" id="sidebar">
+        <div class="brand-row">
+          <div class="brand-mark">VPC</div>
+        </div>
+
+        <div class="user-card">
+          <span class="avatar" id="userInitials" aria-hidden="true"></span>
+          <div>
+            <strong id="userName">Almoxarifado U&C</strong>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="Navegação principal">
+          <button class="nav-item active" data-view="dashboard" type="button">
+            <span class="nav-icon grid-icon" aria-hidden="true"></span>
+            Painel Geral
+          </button>
+          <button class="nav-item operational-only" data-view="launches" type="button">
+            <span class="nav-icon form-icon" aria-hidden="true"></span>
+            Lançamentos
+          </button>
+          <button class="nav-item operational-only" data-view="actions" type="button">
+            <span class="nav-icon action-icon" aria-hidden="true"></span>
+            Evidências e Ações
+          </button>
+          <button class="nav-item chemical-only hidden" data-view="fiveS" type="button">
+            <span class="nav-icon five-s-icon" aria-hidden="true"></span>
+            5S Operacional
+          </button>
+          <button class="nav-item management-only hidden" data-view="treatments" type="button">
+            <span class="nav-icon action-icon" aria-hidden="true"></span>
+            Tratativas e Plano de Ação
+          </button>
+          <button class="nav-item management-only hidden" data-view="tv" type="button">
+            <span class="nav-icon tv-icon" aria-hidden="true"></span>
+            TV Logística
+          </button>
+        </nav>
+
+        <div class="sidebar-foot">
+          <button class="ghost-button" id="logoutButton" type="button">Sair</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <button class="icon-button menu-toggle" id="menuButton" type="button" aria-label="Abrir menu" aria-expanded="false">
+            <span class="hamburger" aria-hidden="true"></span>
+          </button>
+          <div>
+            <p class="eyebrow" id="topDepartment">Departamento</p>
+            <h1 id="viewTitle">Painel Geral</h1>
+          </div>
+          <div class="topbar-actions">
+            <label class="select-label management-only hidden" id="departmentSelectWrap">
+              Departamento
+              <select id="departmentSelect"></select>
+            </label>
+            <label class="select-label">
+              Período
+              <select id="periodSelect">
+                <option value="dia">Hoje</option>
+                <option value="semana" selected>Semana</option>
+                <option value="mes">Mês</option>
+                <option value="trimestre">Trimestre</option>
+              </select>
+            </label>
+            <button class="primary-button" id="refreshButton" type="button">Atualizar</button>
+          </div>
+        </header>
+
+        <section class="view active" data-view-panel="dashboard">
+          <div class="status-strip" id="departmentSummary"></div>
+
+          <div class="kpi-grid" id="departmentKpis"></div>
+
+          <section class="panel chart-stack">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Performance</p>
+                <h2>Registros diários por indicador</h2>
+              </div>
+              <span class="pill neutral" id="periodBadge">Semana</span>
+            </div>
+            <div class="line-grid" id="lineCharts"></div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="launches">
+          <div class="two-column">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Entrada manual</p>
+                  <h2>Novo resultado</h2>
+                </div>
+                <span class="pill neutral" id="launchDepartment">Departamento</span>
+              </div>
+              <form class="data-form" id="launchForm">
+                <label>
+                  Indicador
+                  <select name="indicator" id="launchIndicator" required></select>
+                </label>
+                <label>
+                  Data
+                  <input name="date" type="date" required />
+                </label>
+                <label>
+                  Resultado
+                  <input name="value" type="number" step="0.01" min="0" placeholder="Ex.: 97.5" required />
+                </label>
+                <div class="full formula-fields hidden" id="launchFormulaFields">
+                  <p class="formula-title" id="launchFormulaTitle">Cálculo automático</p>
+
+                  <label class="formula-input hidden" data-field="correctItems">
+                    Quantidade de itens corretos
+                    <input name="correctItems" type="number" min="0" step="1" placeholder="Ex.: 68" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="inventoriedItems">
+                    Quantidade de itens inventariados
+                    <input name="inventoriedItems" type="number" min="0" step="1" placeholder="Ex.: 73" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="totalCountedItems">
+                    Total de itens contados
+                    <input name="totalCountedItems" type="number" min="0" step="1" placeholder="Ex.: 90" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="accountingStock">
+                    Quantidade de estoque contábil
+                    <input name="accountingStock" type="number" min="0" step="1" placeholder="Ex.: 32570" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="wmsStock">
+                    Quantidade de estoque WMS
+                    <input name="wmsStock" type="number" min="0" step="1" placeholder="Ex.: 32566" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="totalItemsStock">
+                    Quantidade total de itens em estoque
+                    <input name="totalItemsStock" type="number" min="0" step="1" placeholder="Ex.: 928" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="obsoleteItems">
+                    Quantidade de itens obsoletos
+                    <input name="obsoleteItems" type="number" min="0" step="1" placeholder="Ex.: 279" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="missingItems">
+                    Quantidade de itens em falta
+                    <input name="missingItems" type="number" min="0" step="1" placeholder="Ex.: 10" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="criticalItems">
+                    Quantidade de itens críticos
+                    <input name="criticalItems" type="number" min="0" step="1" placeholder="Ex.: 168" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="zeroStockMaintenanceItems">
+                    Itens de manutenção com estoque zerado
+                    <input name="zeroStockMaintenanceItems" type="number" min="0" step="1" placeholder="Ex.: 2" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="stockableMaintenanceItems">
+                    Materiais estocáveis de manutenção
+                    <input name="stockableMaintenanceItems" type="number" min="1" step="1" placeholder="Ex.: 200" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="itemsAboveMinimum">
+                    Itens acima do estoque mínimo
+                    <input name="itemsAboveMinimum" type="number" min="0" step="1" placeholder="Ex.: 200" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="countedSkusPeriod">
+                    SKUs contados no período
+                    <input name="countedSkusPeriod" type="number" min="0" step="1" placeholder="Ex.: 924" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="replenishmentSkus">
+                    SKUs no estoque de reposição
+                    <input name="replenishmentSkus" type="number" min="1" step="1" placeholder="Ex.: 925" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="slowMovingSkus">
+                    SKUs há mais de 90 dias
+                    <input name="slowMovingSkus" type="number" min="0" step="1" placeholder="Ex.: 300" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="collaboratorName">
+                    Colaborador
+                    <input name="collaboratorName" type="text" placeholder="Ex.: Nome do colaborador" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="completedActivities">
+                    Atividades concluídas pelo colaborador
+                    <input name="completedActivities" type="number" min="0" step="1" placeholder="Ex.: 25" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="totalAttendances">
+                    Total de atendimentos
+                    <input name="totalAttendances" type="number" min="1" step="1" placeholder="Ex.: 100" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="initialStock">
+                    Estoque inicial (R$)
+                    <input name="initialStock" type="number" min="0" step="0.01" placeholder="Ex.: 923522.47" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="entriesValue">
+                    Entradas (R$)
+                    <input name="entriesValue" type="number" min="0" step="0.01" placeholder="Ex.: 6113.12" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="outboundValue">
+                    Saídas (R$)
+                    <input name="outboundValue" type="number" min="0" step="0.01" placeholder="Ex.: 10696.87" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="receivedLoads">
+                    Quantidade de cargas recebidas
+                    <input name="receivedLoads" type="number" min="0" step="1" placeholder="Ex.: 17" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="receiptHours">
+                    Tempo total de recebimento (horas)
+                    <input name="receiptHours" type="number" min="0" step="0.01" placeholder="Ex.: 10" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="receivedUnits">
+                    Quantidade de itens recebidos
+                    <input name="receivedUnits" type="number" min="0" step="1" placeholder="Ex.: 380052" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="damagedUnits">
+                    Quantidade de itens avariados
+                    <input name="damagedUnits" type="number" min="0" step="1" placeholder="Ex.: 120" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="correctUnits">
+                    Quantidade de itens corretos
+                    <input name="correctUnits" type="number" min="0" step="1" placeholder="Ex.: 379900" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="followUpLoads">
+                    Cargas com follow-up em 1 hora
+                    <input name="followUpLoads" type="number" min="0" step="1" placeholder="Ex.: 13" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="receivedPallets">
+                    Volume recebido (paletes)
+                    <input name="receivedPallets" type="number" min="0" step="1" placeholder="Ex.: 168" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="palletCapacity">
+                    Capacidade de posição (paletes)
+                    <input name="palletCapacity" type="number" min="0" step="1" placeholder="Ex.: 200" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="countedItems">
+                    Total de itens contados
+                    <input name="countedItems" type="number" min="0" step="1" placeholder="Ex.: 145" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="collaboratorCount">
+                    Número de colaboradores
+                    <input name="collaboratorCount" type="number" min="1" step="1" placeholder="Ex.: 4" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="lossItems">
+                    Perdas no estoque (itens)
+                    <input name="lossItems" type="number" min="0" step="1" placeholder="Ex.: 1" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="movedItems">
+                    Quantidade de itens movimentados
+                    <input name="movedItems" type="number" min="0" step="1" placeholder="Ex.: 279" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="movementErrors">
+                    Quantidade de erros de movimentação
+                    <input name="movementErrors" type="number" min="0" step="1" placeholder="Ex.: 2" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="damagedMovedItems">
+                    Quantidade de itens avariados na movimentação
+                    <input name="damagedMovedItems" type="number" min="0" step="1" placeholder="Ex.: 1" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="waitMinutes">
+                    Tempo total de espera para carregamento (min)
+                    <input name="waitMinutes" type="number" min="0" step="0.01" placeholder="Ex.: 18" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="loadedTrucks">
+                    Quantidade de carretas carregadas
+                    <input name="loadedTrucks" type="number" min="1" step="1" placeholder="Ex.: 4" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="loadingTotalMinutes">
+                    Tempo total de carregamento (min)
+                    <input name="loadingTotalMinutes" type="number" min="0" step="0.01" placeholder="Ex.: 62" />
+                  </label>
+
+                  <p class="formula-hint" id="launchFormulaHint"></p>
+                </div>
+                <label>
+                  Turno
+                  <select name="shift">
+                    <option>Comercial</option>
+                    <option>Turno A</option>
+                    <option>Turno B</option>
+                    <option>Turno C</option>
+                    <option>Turno D</option>
+                  </select>
+                </label>
+                <label class="full">
+                  Observação
+                  <textarea name="comment" rows="4" placeholder="Contexto do resultado"></textarea>
+                </label>
+                <div class="full form-actions">
+                  <button class="primary-button" id="launchSubmitButton" type="submit">Salvar resultado</button>
+                  <button class="ghost-button hidden" id="launchCancelEdit" type="button">Cancelar edição</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Histórico</p>
+                  <h2>Últimos lançamentos</h2>
+                </div>
+                <span class="counter" id="launchCounter">0</span>
+              </div>
+              <div class="activity-list" id="activityList"></div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Resumo</p>
+                <h2>Lançamentos do período</h2>
+              </div>
+              <span class="pill neutral" id="launchTablePeriod">Semana</span>
+            </div>
+
+            <div class="status-strip launch-summary-strip" id="launchTableSummary"></div>
+
+            <div class="table-wrap">
+              <table class="launch-table">
+                <thead>
+                  <tr>
+                    <th>
+                      <div class="column-head">Data</div>
+                      <select class="column-filter-control" id="launchFilterDate" data-launch-filter="date">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <div class="column-head">Indicador</div>
+                      <select class="column-filter-control" id="launchFilterIndicator" data-launch-filter="indicator">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <div class="column-head">Resultado</div>
+                      <select class="column-filter-control" id="launchFilterValue" data-launch-filter="value">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <div class="column-head">Turno</div>
+                      <select class="column-filter-control" id="launchFilterShift" data-launch-filter="shift">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <div class="column-head">Status</div>
+                      <select class="column-filter-control" id="launchFilterStatus" data-launch-filter="status">
+                        <option value="">Todos</option>
+                        <option value="success">Dentro da meta</option>
+                        <option value="warn">Atenção</option>
+                        <option value="danger">Fora da meta</option>
+                        <option value="tracking">Acompanhamento</option>
+                        <option value="neutral">Sem dados</option>
+                      </select>
+                    </th>
+                    <th>
+                      <div class="column-head">Observação</div>
+                      <input class="column-filter-control" id="launchFilterComment" data-launch-filter="comment" placeholder="Filtrar..." />
+                    </th>
+                  </tr>
+                </thead>
+                <tbody id="launchTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="actions">
+          <div class="two-column">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Governança</p>
+                  <h2>Evidência, justificativa ou plano</h2>
+                </div>
+                <span class="pill neutral" id="actionDepartment">Departamento</span>
+              </div>
+              <form class="data-form" id="actionForm">
+                <label>
+                  Tipo
+                  <select name="type" required>
+                    <option>Evidência</option>
+                    <option>Justificativa</option>
+                    <option>Plano de Ação</option>
+                  </select>
+                </label>
+                <label>
+                  Status
+                  <select name="status" required>
+                    <option>Em andamento</option>
+                    <option>Concluída</option>
+                  </select>
+                </label>
+                <label>
+                  Indicador
+                  <select name="indicator" id="actionIndicator" required></select>
+                </label>
+                <label>
+                  Responsável
+                  <input name="owner" required />
+                </label>
+                <label>
+                  Prazo
+                  <input name="dueDate" type="date" />
+                </label>
+                <label>
+                  Data do registro
+                  <input name="recordDate" type="date" required />
+                </label>
+                <label class="full">
+                  Descrição
+                  <textarea name="description" rows="4" required></textarea>
+                </label>
+                <label class="full">
+                  Arquivo de apoio
+                  <input name="file" type="file" />
+                </label>
+                <div class="full form-actions">
+                  <button class="primary-button" id="actionSubmitButton" type="submit">Registrar</button>
+                  <button class="ghost-button hidden" id="actionCancelEdit" type="button">Cancelar edição</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Acompanhamento</p>
+                  <h2>Registros vinculados</h2>
+                </div>
+                <span class="counter" id="actionCounter">0</span>
+              </div>
+              <div class="action-list" id="actionList"></div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Resumo</p>
+                <h2>Registros do período</h2>
+              </div>
+              <span class="pill neutral" id="actionTablePeriod">Semana</span>
+            </div>
+
+            <div class="status-strip launch-summary-strip" id="actionTableSummary"></div>
+
+            <div class="table-filters" id="actionTableFilters">
+              <label class="table-filter-field">
+                Data
+                <input id="actionFilterDate" data-action-filter="recordDate" type="date" />
+              </label>
+              <label class="table-filter-field">
+                Tipo
+                <select id="actionFilterType" data-action-filter="type">
+                  <option value="">Todos</option>
+                </select>
+              </label>
+              <label class="table-filter-field">
+                Indicador
+                <input id="actionFilterIndicator" data-action-filter="indicator" placeholder="Filtrar indicador" />
+              </label>
+              <label class="table-filter-field">
+                Responsável
+                <input id="actionFilterOwner" data-action-filter="owner" placeholder="Filtrar responsável" />
+              </label>
+              <label class="table-filter-field">
+                Status
+                <select id="actionFilterStatus" data-action-filter="status">
+                  <option value="">Todos</option>
+                  <option>Concluída</option>
+                  <option>Em andamento</option>
+                </select>
+              </label>
+              <label class="table-filter-field">
+                Prazo
+                <input id="actionFilterDueDate" data-action-filter="dueDate" type="date" />
+              </label>
+              <label class="table-filter-field">
+                Descrição
+                <input id="actionFilterDescription" data-action-filter="description" placeholder="Filtrar descrição" />
+              </label>
+              <label class="table-filter-field">
+                Arquivo
+                <input id="actionFilterFile" data-action-filter="file" placeholder="Filtrar arquivo" />
+              </label>
+              <button class="ghost-button table-filter-clear" id="actionFilterClear" type="button">Limpar filtros</button>
+            </div>
+
+            <div class="table-wrap">
+              <table class="launch-table">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Tipo</th>
+                    <th>Indicador</th>
+                    <th>Responsável</th>
+                    <th>Status</th>
+                    <th>Prazo</th>
+                    <th>Descrição</th>
+                  </tr>
+                  <tr>
+                    <th>
+                      <select class="column-filter-control" id="actionColFilterDate" data-action-col-filter="recordDate">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter-control" id="actionColFilterType" data-action-col-filter="type">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter-control" id="actionColFilterIndicator" data-action-col-filter="indicator">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter-control" id="actionColFilterOwner" data-action-col-filter="owner">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter-control" id="actionColFilterStatus" data-action-col-filter="status">
+                        <option value="">Todos</option>
+                        <option>Concluída</option>
+                        <option>Em andamento</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter-control" id="actionColFilterDueDate" data-action-col-filter="dueDate">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <input class="column-filter-control" id="actionColFilterDescription" data-action-col-filter="description" placeholder="Filtrar..." />
+                    </th>
+                  </tr>
+                </thead>
+                <tbody id="actionTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="treatments">
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Gestão</p>
+                <h2>Tratativas e plano de ação</h2>
+              </div>
+              <span class="pill neutral" id="managementActionPeriod">Semana</span>
+            </div>
+
+            <div class="status-strip launch-summary-strip" id="managementActionSummary"></div>
+
+            <div class="table-wrap">
+              <table class="launch-table management-action-table">
+                <thead>
+                  <tr>
+                    <th>Departamento</th>
+                    <th>Data</th>
+                    <th>Tipo</th>
+                    <th>Indicador</th>
+                    <th>Responsável</th>
+                    <th>Status</th>
+                    <th>Prazo</th>
+                    <th>Descrição</th>
+                  </tr>
+                  <tr>
+                    <th>
+                      <select class="column-filter-control" id="managementActionColFilterDepartment" data-management-action-col-filter="department">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter-control" id="managementActionColFilterDate" data-management-action-col-filter="recordDate">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter-control" id="managementActionColFilterType" data-management-action-col-filter="type">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter-control" id="managementActionColFilterIndicator" data-management-action-col-filter="indicator">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter-control" id="managementActionColFilterOwner" data-management-action-col-filter="owner">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter-control" id="managementActionColFilterStatus" data-management-action-col-filter="status">
+                        <option value="">Todos</option>
+                        <option>Concluída</option>
+                        <option>Em andamento</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter-control" id="managementActionColFilterDueDate" data-management-action-col-filter="dueDate">
+                        <option value="">Todos</option>
+                      </select>
+                    </th>
+                    <th>
+                      <input class="column-filter-control" id="managementActionColFilterDescription" data-management-action-col-filter="description" placeholder="Filtrar..." />
+                    </th>
+                  </tr>
+                </thead>
+                <tbody id="managementActionTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="fiveS">
+          <section class="panel five-s-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Excelência operacional</p>
+                <h2>Checklist 5S da Operação Química</h2>
+              </div>
+              <span class="pill neutral" id="fiveSPeriod">Auditoria vigente</span>
+            </div>
+
+            <div class="status-strip launch-summary-strip" id="fiveSSummary"></div>
+
+            <div class="five-s-grid">
+              <section class="five-s-card">
+                <div class="five-s-card-heading">
+                  <div>
+                    <p class="eyebrow">Radar 5S</p>
+                    <h3>Performance por senso</h3>
+                  </div>
+                  <span class="pill neutral" id="fiveSOverallPill">0%</span>
+                </div>
+                <div class="five-s-radar" id="fiveSRadar"></div>
+              </section>
+
+              <section class="five-s-card">
+                <div class="five-s-card-heading">
+                  <div>
+                    <p class="eyebrow">Histórico diário</p>
+                    <h3>Últimos registros de auditoria</h3>
+                  </div>
+                  <span class="pill neutral" id="fiveSRecordsCount">0 registros</span>
+                </div>
+                <div class="five-s-records" id="fiveSRecords"></div>
+              </section>
+            </div>
+
+            <section class="five-s-card five-s-audit-flow">
+              <div class="five-s-card-heading">
+                <div>
+                  <p class="eyebrow">Auditoria guiada</p>
+                  <h3>Perguntas e respostas 5S</h3>
+                </div>
+                <div class="five-s-audit-actions">
+                  <label class="five-s-date-field">
+                    Data da auditoria
+                    <input id="fiveSAuditDate" type="date" />
+                  </label>
+                  <button class="primary-button five-s-save-button" id="fiveSSaveAuditButton" type="button">Salvar auditoria</button>
+                  <span class="pill neutral" id="fiveSAnsweredPill">0/0 respondidas</span>
+                </div>
+              </div>
+              <div class="five-s-question-list" id="fiveSQuestionList"></div>
+            </section>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="tv">
+          <section class="tv-screen">
+            <div class="tv-heading">
+              <div>
+                <p class="eyebrow light">Módulo TV</p>
+                <h2>Painel de controle de indicadores</h2>
+              </div>
+              <div id="tvClock">Atualizado agora</div>
+            </div>
+            <div class="tv-summary" id="tvSummary"></div>
+            <div class="tv-grid" id="tvCards"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js?v=20260626-compact-launches"></script>
+  </body>
+</html>
