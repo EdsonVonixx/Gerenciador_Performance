@@ -855,7 +855,7 @@ function getCardDetails(indicator) {
 
   if (indicatorKey.includes("produtividade") && indicatorKey.includes("individual")) {
     const usageRows = rowsWithFields(["completedShiftActivities", "collaboratorCount"]);
-    if (indicatorKey.includes("uso") && indicatorKey.includes("consumo") && usageRows.length > 0) {
+    if (usageRows.length > 0) {
       return [
         ["Atividades concluídas no turno", formatNumber(sumField(usageRows, "completedShiftActivities"))],
         ["Colaboradores", formatNumber(sumField(usageRows, "collaboratorCount"))],
@@ -1563,8 +1563,8 @@ launchFormulaDefinitions.recebimento_erros_armazenagem = {
 
 launchFormulaDefinitions.recebimento_produtividade_individual = {
   title: "Cálculo de Produtividade Individual",
-  hint: "Produtividade (%) = (Atividades concluídas pelo colaborador / Total de atendimentos) x 100.",
-  fields: ["collaboratorName", "completedActivities", "totalAttendances"],
+  hint: "Produtividade (%) = (Atividades concluídas no turno / Total de colaboradores) x 100.",
+  fields: ["completedShiftActivities", "collaboratorCount"],
   allowNegative: false,
 };
 
@@ -1830,10 +1830,12 @@ function computeLaunchFormulaValue(formulaType) {
   }
 
   if (formulaType === "recebimento_produtividade_individual") {
-    const completedActivities = getLaunchFormulaFieldValue("completedActivities");
-    const totalAttendances = getLaunchFormulaFieldValue("totalAttendances");
-    if (!Number.isFinite(completedActivities) || !Number.isFinite(totalAttendances) || totalAttendances <= 0) return NaN;
-    return (completedActivities / totalAttendances) * 100;
+    const completedShiftActivities = getLaunchFormulaFieldValue("completedShiftActivities");
+    const collaboratorCount = getLaunchFormulaFieldValue("collaboratorCount");
+    if (!Number.isFinite(completedShiftActivities) || !Number.isFinite(collaboratorCount) || collaboratorCount <= 0) {
+      return NaN;
+    }
+    return (completedShiftActivities / collaboratorCount) * 100;
   }
 
   if (formulaType === "ruptura_estocaveis") {
@@ -2866,10 +2868,10 @@ function applyRecebimentoLaunchFormulaDetails(indicator, formulaType, payload) {
   }
 
   if (formulaType === "recebimento_produtividade_individual") {
-    if (!Number.isFinite(payload.completedActivities) || !Number.isFinite(payload.totalAttendances)) return;
+    if (!Number.isFinite(payload.completedShiftActivities) || !Number.isFinite(payload.collaboratorCount)) return;
     indicator.details = [
-      ["Colaborador", payload.collaboratorName || "-"],
-      ["Atendimentos", formatNumber(payload.totalAttendances)],
+      ["Atividades concluídas no turno", formatNumber(payload.completedShiftActivities)],
+      ["Colaboradores", formatNumber(payload.collaboratorCount)],
     ];
   }
 
@@ -3107,9 +3109,8 @@ function extractFormulaPayload(formData, formulaType) {
   }
   if (formulaType === "recebimento_produtividade_individual") {
     return {
-      collaboratorName: repairTextEncoding(String(formData.get("collaboratorName") || "").trim()),
-      completedActivities: parseLocalizedNumber(formData.get("completedActivities")),
-      totalAttendances: parseLocalizedNumber(formData.get("totalAttendances")),
+      completedShiftActivities: parseLocalizedNumber(formData.get("completedShiftActivities")),
+      collaboratorCount: parseLocalizedNumber(formData.get("collaboratorCount")),
     };
   }
   if (formulaType === "ruptura_estocaveis") {
@@ -3306,9 +3307,8 @@ function buildHistoryEntry(dateValue, numericValue, formulaType, formulaPayload,
     entry.totalStoredMaterials = formulaPayload.totalStoredMaterials;
   }
   if (formulaType === "recebimento_produtividade_individual") {
-    entry.collaboratorName = formulaPayload.collaboratorName;
-    entry.completedActivities = formulaPayload.completedActivities;
-    entry.totalAttendances = formulaPayload.totalAttendances;
+    entry.completedShiftActivities = formulaPayload.completedShiftActivities;
+    entry.collaboratorCount = formulaPayload.collaboratorCount;
   }
   if (formulaType === "ruptura_estocaveis") {
     entry.zeroStockMaintenanceItems = formulaPayload.zeroStockMaintenanceItems;
