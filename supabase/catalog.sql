@@ -7,7 +7,7 @@ values
   ('almoxarifado', 'Almoxarifado U&C', '#1d6b57'),
   ('recebimento', 'Recebimento e Armazenagem', '#2f68a7'),
   ('estoque', 'Estoque e Inventário', '#7352a3'),
-  ('secos', 'Operação Secos', '#b87818'),
+  ('secos', 'Operação Secos e Expedição', '#b87818'),
   ('quimicas', 'Operações Químicas', '#c8452d')
 on conflict (slug) do update
 set
@@ -54,11 +54,13 @@ from (
     ('estoque', 'Estoque Slow Mover (Maior que 90 dias)', '%', 10, 'lower', 'Meta', 'estoque_slow_mover', 5),
     ('estoque', 'Produtividade de Contagens', 'SKU/dia', 20, 'higher', 'Meta', 'estoque_produtividade_individual_contagens', 6),
 
-    ('secos', 'Movimentação por Colaborador', 'itens/colab', 50, 'higher', 'Meta', 'movimentacao_colaborador', 1),
-    ('secos', 'Tempo Médio de Carregamento', 'min', 70, 'lower', 'Limite', 'tempo_carregamento', 2),
-    ('secos', 'Taxa de Erros de Movimentação', '%', 1, 'lower', 'Limite', 'erros_movimentacao', 3),
-    ('secos', 'Taxa de Avarias de Movimentação', '%', 1, 'lower', 'Limite', 'avarias_movimentacao', 4),
-    ('secos', 'Tempo de Espera de Carregamento', 'min', 20, 'lower', 'Limite', 'espera_carregamento', 5),
+    ('secos', 'Índice de Perdas por Ajuste no Picks Secos', '%', 0.05, 'lower', 'Meta', 'secos_perdas_picks', 1),
+    ('secos', 'Índice de Ruptura de Embalagens na Produção', 'OPs', 0, 'lower', 'Meta', 'secos_ruptura_embalagens', 2),
+    ('secos', 'Índice de OPs Atendidas Erradas', '%', 0.3, 'lower', 'Meta', 'secos_ops_atendidas_erradas', 3),
+    ('secos', 'Índice de Erros de Movimentação', '%', 0.5, 'lower', 'Meta', 'secos_erros_movimentacao', 4),
+    ('secos', 'Erros Expedição Fábrica (Produto Acabado)', 'R$', 0, 'lower', 'Meta', 'secos_erros_expedicao_fabrica', 5),
+    ('secos', 'Tempo Médio Carregamento Carretas', 'min', 60, 'lower', 'Meta', 'secos_tempo_carregamento_carretas', 6),
+    ('secos', 'Produtividade Individual', 'atividades/colab', null, 'tracking', 'Acompanhamento', 'secos_produtividade_individual', 7),
 
     ('quimicas', 'Conformidade Química', '%', 99, 'higher', 'Meta', null, 1),
     ('quimicas', 'Perdas Químicas', '%', 0.8, 'lower', 'Limite', null, 2),

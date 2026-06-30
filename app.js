@@ -26,7 +26,7 @@ const accessProfiles = [
   },
   {
     key: "secos",
-    label: "Operação Secos",
+    label: "Operação Secos e Expedição",
     password: "OS4",
     role: "Acesso operacional",
     departmentKey: "secos",
@@ -115,14 +115,16 @@ const departments = {
     records: [],
   },
   secos: {
-    label: "Operação Secos",
+    label: "Operação Secos e Expedição",
     color: "#b87818",
     indicators: [
-      { name: "Movimentação por Colaborador", unit: "itens/colab", target: 50, goal: "higher" },
-      { name: "Tempo Médio de Carregamento", unit: "min", target: 70, goal: "lower" },
-      { name: "Taxa de Erros de Movimentação", unit: "%", target: 1, goal: "lower" },
-      { name: "Taxa de Avarias de Movimentação", unit: "%", target: 1, goal: "lower" },
-      { name: "Tempo de Espera de Carregamento", unit: "min", target: 20, goal: "lower" },
+      { name: "Índice de Perdas por Ajuste no Picks Secos", unit: "%", target: 0.05, goal: "lower", targetLabel: "Meta" },
+      { name: "Índice de Ruptura de Embalagens na Produção", unit: "OPs", target: 0, goal: "lower", targetLabel: "Meta" },
+      { name: "Índice de OPs Atendidas Erradas", unit: "%", target: 0.3, goal: "lower", targetLabel: "Meta" },
+      { name: "Índice de Erros de Movimentação", unit: "%", target: 0.5, goal: "lower", targetLabel: "Meta" },
+      { name: "Erros Expedição Fábrica (Produto Acabado)", unit: "R$", target: 0, goal: "lower", targetLabel: "Meta" },
+      { name: "Tempo Médio Carregamento Carretas", unit: "min", target: 60, goal: "lower", targetLabel: "Meta" },
+      { name: "Produtividade Individual", unit: "atividades/colab", target: null, goal: "tracking", statusText: "Acompanhamento" },
     ],
     launches: [],
     records: [],
@@ -647,6 +649,7 @@ function shouldDisplayWithoutDecimalsInChart(indicator) {
   return (
     key === "tempo de recebimento" ||
     key === "tempo medio de liberacao do material" ||
+    key === "tempo medio carregamento carretas" ||
     key === "produtividade de contagens" ||
     key === "produtividade individual (contagens)"
   );
@@ -794,6 +797,70 @@ function getCardDetails(indicator) {
     if (rows.length > 0) {
       return [
         ["Contagens realizadas", formatNumber(sumField(rows, "dailyCountedSkus"))],
+        ["Colaboradores", formatNumber(sumField(rows, "collaboratorCount"))],
+      ];
+    }
+  }
+
+  if (indicatorKey.includes("perdas") && indicatorKey.includes("picks")) {
+    const rows = rowsWithFields(["adjustedValue", "totalStockValue"]);
+    if (rows.length > 0) {
+      return [
+        ["Valor ajustado", `R$ ${formatNumber(sumField(rows, "adjustedValue"))}`],
+        ["Valor do estoque", `R$ ${formatNumber(sumField(rows, "totalStockValue"))}`],
+      ];
+    }
+  }
+
+  if (indicatorKey.includes("ruptura") && indicatorKey.includes("embalagens")) {
+    const rows = rowsWithFields(["impactedOps"]);
+    if (rows.length > 0) {
+      return [["OPs impactadas", formatNumber(sumField(rows, "impactedOps"))]];
+    }
+  }
+
+  if (indicatorKey.includes("ops") && indicatorKey.includes("erradas")) {
+    const rows = rowsWithFields(["wrongOps", "requestedOps"]);
+    if (rows.length > 0) {
+      return [
+        ["OPs erradas", formatNumber(sumField(rows, "wrongOps"))],
+        ["OPs solicitadas", formatNumber(sumField(rows, "requestedOps"))],
+      ];
+    }
+  }
+
+  if (indicatorKey.includes("erros") && indicatorKey.includes("movimentacao")) {
+    const rows = rowsWithFields(["movementErrors", "movedItems"]);
+    if (rows.length > 0) {
+      return [
+        ["Erros de movimentação", formatNumber(sumField(rows, "movementErrors"))],
+        ["Itens movimentados", formatNumber(sumField(rows, "movedItems"))],
+      ];
+    }
+  }
+
+  if (indicatorKey.includes("erros") && indicatorKey.includes("expedicao")) {
+    const rows = rowsWithFields(["expeditionErrorValue"]);
+    if (rows.length > 0) {
+      return [["Sobras e faltas", `R$ ${formatNumber(sumField(rows, "expeditionErrorValue"))}`]];
+    }
+  }
+
+  if (indicatorKey.includes("tempo") && indicatorKey.includes("carregamento") && indicatorKey.includes("carretas")) {
+    const rows = rowsWithFields(["loadedTrucks", "loadingTotalMinutes"]);
+    if (rows.length > 0) {
+      return [
+        ["Carretas carregadas", formatNumber(sumField(rows, "loadedTrucks"))],
+        ["Tempo total", `${formatNumber(sumField(rows, "loadingTotalMinutes"))} min`],
+      ];
+    }
+  }
+
+  if (selectedDepartmentKey === "secos" && indicatorKey.includes("produtividade") && indicatorKey.includes("individual")) {
+    const rows = rowsWithFields(["completedShiftActivities", "collaboratorCount"]);
+    if (rows.length > 0) {
+      return [
+        ["Atividades concluídas", formatNumber(sumField(rows, "completedShiftActivities"))],
         ["Colaboradores", formatNumber(sumField(rows, "collaboratorCount"))],
       ];
     }
@@ -1436,6 +1503,29 @@ function getLaunchFormulaType(indicatorName) {
       return "estoque_produtividade_individual_contagens";
     }
   }
+  if (selectedDepartmentKey === "secos") {
+    if (key.includes("perdas") && key.includes("picks")) {
+      return "secos_perdas_picks";
+    }
+    if (key.includes("ruptura") && key.includes("embalagens")) {
+      return "secos_ruptura_embalagens";
+    }
+    if (key.includes("ops") && key.includes("erradas")) {
+      return "secos_ops_atendidas_erradas";
+    }
+    if (key.includes("erros") && key.includes("movimentacao")) {
+      return "secos_erros_movimentacao";
+    }
+    if (key.includes("erros") && key.includes("expedicao")) {
+      return "secos_erros_expedicao_fabrica";
+    }
+    if (key.includes("tempo") && key.includes("carregamento") && key.includes("carretas")) {
+      return "secos_tempo_carregamento_carretas";
+    }
+    if (key.includes("produtividade") && key.includes("individual")) {
+      return "secos_produtividade_individual";
+    }
+  }
   if (key.includes("ruptura") && key.includes("estocave")) return "ruptura_estocaveis";
   if (key.includes("acuracidade") && key.includes("estoque") && key.includes("itens")) return "acuracidade_uso_consumo";
   if (key.includes("aderencia") && key.includes("estoque") && key.includes("minimo")) return "aderencia_estoque_minimo";
@@ -1698,6 +1788,59 @@ launchFormulaDefinitions.perdas_inventario = {
   hint: "Perdas (%) = (Perdas no estoque / Itens inventariados) x 100.",
   fields: ["lossItems", "inventoriedItems"],
   allowNegative: false,
+};
+
+launchFormulaDefinitions.secos_perdas_picks = {
+  title: "Cálculo de Índice de Perdas por Ajuste no Picks Secos",
+  hint: "Índice de perdas (%) = (Valor total ajustado / Valor total do estoque) x 100.",
+  fields: ["adjustedValue", "totalStockValue"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.secos_ruptura_embalagens = {
+  title: "Cálculo de Índice de Ruptura de Embalagens na Produção",
+  hint: "Ruptura = quantidade de OPs impactadas no período.",
+  fields: ["impactedOps"],
+  allowNegative: false,
+  resultSuffix: " OPs",
+};
+
+launchFormulaDefinitions.secos_ops_atendidas_erradas = {
+  title: "Cálculo de Índice de OPs Atendidas Erradas",
+  hint: "Índice (%) = (OPs atendidas erradas / Total de OPs solicitadas) x 100.",
+  fields: ["wrongOps", "requestedOps"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.secos_erros_movimentacao = {
+  title: "Cálculo de Índice de Erros de Movimentação",
+  hint: "Erros (%) = (Quantidade de erros de movimentação / Itens movimentados) x 100.",
+  fields: ["movementErrors", "movedItems"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.secos_erros_expedicao_fabrica = {
+  title: "Cálculo de Erros Expedição Fábrica",
+  hint: "Erro de expedição = somatória em R$ de sobras e faltas expedidas.",
+  fields: ["expeditionErrorValue"],
+  allowNegative: false,
+  resultSuffix: "",
+};
+
+launchFormulaDefinitions.secos_tempo_carregamento_carretas = {
+  title: "Cálculo de Tempo Médio Carregamento Carretas",
+  hint: "Tempo médio (min) = Tempo total de carregamento / Quantidade de carretas carregadas.",
+  fields: ["loadedTrucks", "loadingTotalMinutes"],
+  allowNegative: false,
+  resultSuffix: " min",
+};
+
+launchFormulaDefinitions.secos_produtividade_individual = {
+  title: "Cálculo de Produtividade Individual",
+  hint: "Produtividade = Atividades concluídas / Total de colaboradores.",
+  fields: ["completedShiftActivities", "collaboratorCount"],
+  allowNegative: false,
+  resultSuffix: " atividades/colab",
 };
 
 launchFormulaDefinitions.movimentacao_colaborador = {
@@ -1980,6 +2123,53 @@ function computeLaunchFormulaValue(formulaType) {
     return (lossItems / inventoriedItems) * 100;
   }
 
+  if (formulaType === "secos_perdas_picks") {
+    const adjustedValue = getLaunchFormulaFieldValue("adjustedValue");
+    const totalStockValue = getLaunchFormulaFieldValue("totalStockValue");
+    if (!Number.isFinite(adjustedValue) || !Number.isFinite(totalStockValue) || totalStockValue <= 0) return NaN;
+    return (adjustedValue / totalStockValue) * 100;
+  }
+
+  if (formulaType === "secos_ruptura_embalagens") {
+    const impactedOps = getLaunchFormulaFieldValue("impactedOps");
+    if (!Number.isFinite(impactedOps)) return NaN;
+    return impactedOps;
+  }
+
+  if (formulaType === "secos_ops_atendidas_erradas") {
+    const wrongOps = getLaunchFormulaFieldValue("wrongOps");
+    const requestedOps = getLaunchFormulaFieldValue("requestedOps");
+    if (!Number.isFinite(wrongOps) || !Number.isFinite(requestedOps) || requestedOps <= 0) return NaN;
+    return (wrongOps / requestedOps) * 100;
+  }
+
+  if (formulaType === "secos_erros_movimentacao") {
+    const movementErrors = getLaunchFormulaFieldValue("movementErrors");
+    const movedItems = getLaunchFormulaFieldValue("movedItems");
+    if (!Number.isFinite(movementErrors) || !Number.isFinite(movedItems) || movedItems <= 0) return NaN;
+    return (movementErrors / movedItems) * 100;
+  }
+
+  if (formulaType === "secos_erros_expedicao_fabrica") {
+    const expeditionErrorValue = getLaunchFormulaFieldValue("expeditionErrorValue");
+    if (!Number.isFinite(expeditionErrorValue)) return NaN;
+    return expeditionErrorValue;
+  }
+
+  if (formulaType === "secos_tempo_carregamento_carretas") {
+    const loadedTrucks = getLaunchFormulaFieldValue("loadedTrucks");
+    const loadingTotalMinutes = getLaunchFormulaFieldValue("loadingTotalMinutes");
+    if (!Number.isFinite(loadedTrucks) || !Number.isFinite(loadingTotalMinutes) || loadedTrucks <= 0) return NaN;
+    return loadingTotalMinutes / loadedTrucks;
+  }
+
+  if (formulaType === "secos_produtividade_individual") {
+    const completedShiftActivities = getLaunchFormulaFieldValue("completedShiftActivities");
+    const collaboratorCount = getLaunchFormulaFieldValue("collaboratorCount");
+    if (!Number.isFinite(completedShiftActivities) || !Number.isFinite(collaboratorCount) || collaboratorCount <= 0) return NaN;
+    return completedShiftActivities / collaboratorCount;
+  }
+
   if (formulaType === "movimentacao_colaborador") {
     const movedItems = getLaunchFormulaFieldValue("movedItems");
     const collaboratorCount = getLaunchFormulaFieldValue("collaboratorCount");
@@ -2032,6 +2222,7 @@ function updateLaunchResultFromFormula() {
   const definition = launchFormulaDefinitions[formulaType];
   const computedValue = computeLaunchFormulaValue(formulaType);
   const resultSuffix = definition.resultSuffix || "%";
+  const indicator = currentDepartment().indicators.find((item) => item.name === indicatorName);
   if (Number.isFinite(computedValue)) {
     valueInput.value = computedValue.toFixed(2);
     if (formulaType === "giro_diario") {
@@ -2041,6 +2232,10 @@ function updateLaunchResultFromFormula() {
       const finalStock = initialStock + entriesValue - outboundValue;
       const averageStock = (initialStock + finalStock) / 2;
       hintElement.textContent = `${definition.hint} Estoque final: R$ ${formatNumber(finalStock)} | Estoque médio: R$ ${formatNumber(averageStock)} | Resultado calculado: ${formatNumber(computedValue)}%.`;
+      return;
+    }
+    if (indicator?.unit === "R$") {
+      hintElement.textContent = `${definition.hint} Resultado calculado: R$ ${formatNumber(computedValue)}.`;
       return;
     }
     hintElement.textContent = `${definition.hint} Resultado calculado: ${formatNumber(computedValue)}${resultSuffix}.`;
@@ -2097,6 +2292,12 @@ function syncLaunchFormByIndicator() {
     "totalAttendances",
     "completedShiftActivities",
     "dailyCountedSkus",
+    "adjustedValue",
+    "totalStockValue",
+    "impactedOps",
+    "wrongOps",
+    "requestedOps",
+    "expeditionErrorValue",
     "initialStock",
     "entriesValue",
     "outboundValue",
@@ -2997,6 +3198,56 @@ function applySecosLaunchFormulaDetails(indicator, formulaType, payload) {
   if (selectedDepartmentKey !== "secos") return;
   if (!indicator || !payload) return;
 
+  if (formulaType === "secos_perdas_picks") {
+    if (!Number.isFinite(payload.adjustedValue) || !Number.isFinite(payload.totalStockValue)) return;
+    indicator.details = [
+      ["Valor ajustado", `R$ ${formatNumber(payload.adjustedValue)}`],
+      ["Valor do estoque", `R$ ${formatNumber(payload.totalStockValue)}`],
+    ];
+  }
+
+  if (formulaType === "secos_ruptura_embalagens") {
+    if (!Number.isFinite(payload.impactedOps)) return;
+    indicator.details = [["OPs impactadas", formatNumber(payload.impactedOps)]];
+  }
+
+  if (formulaType === "secos_ops_atendidas_erradas") {
+    if (!Number.isFinite(payload.wrongOps) || !Number.isFinite(payload.requestedOps)) return;
+    indicator.details = [
+      ["OPs erradas", formatNumber(payload.wrongOps)],
+      ["OPs solicitadas", formatNumber(payload.requestedOps)],
+    ];
+  }
+
+  if (formulaType === "secos_erros_movimentacao") {
+    if (!Number.isFinite(payload.movementErrors) || !Number.isFinite(payload.movedItems)) return;
+    indicator.details = [
+      ["Erros de movimentação", formatNumber(payload.movementErrors)],
+      ["Itens movimentados", formatNumber(payload.movedItems)],
+    ];
+  }
+
+  if (formulaType === "secos_erros_expedicao_fabrica") {
+    if (!Number.isFinite(payload.expeditionErrorValue)) return;
+    indicator.details = [["Sobras e faltas", `R$ ${formatNumber(payload.expeditionErrorValue)}`]];
+  }
+
+  if (formulaType === "secos_tempo_carregamento_carretas") {
+    if (!Number.isFinite(payload.loadedTrucks) || !Number.isFinite(payload.loadingTotalMinutes)) return;
+    indicator.details = [
+      ["Carretas carregadas", formatNumber(payload.loadedTrucks)],
+      ["Tempo total", `${formatNumber(payload.loadingTotalMinutes)} min`],
+    ];
+  }
+
+  if (formulaType === "secos_produtividade_individual") {
+    if (!Number.isFinite(payload.completedShiftActivities) || !Number.isFinite(payload.collaboratorCount)) return;
+    indicator.details = [
+      ["Atividades concluídas", formatNumber(payload.completedShiftActivities)],
+      ["Colaboradores", formatNumber(payload.collaboratorCount)],
+    ];
+  }
+
   if (formulaType === "movimentacao_colaborador") {
     if (!Number.isFinite(payload.movedItems) || !Number.isFinite(payload.collaboratorCount)) return;
     indicator.details = [
@@ -3226,6 +3477,46 @@ function extractFormulaPayload(formData, formulaType) {
       inventoriedItems: parseLocalizedNumber(formData.get("inventoriedItems")),
     };
   }
+  if (formulaType === "secos_perdas_picks") {
+    return {
+      adjustedValue: parseLocalizedNumber(formData.get("adjustedValue")),
+      totalStockValue: parseLocalizedNumber(formData.get("totalStockValue")),
+    };
+  }
+  if (formulaType === "secos_ruptura_embalagens") {
+    return {
+      impactedOps: parseLocalizedNumber(formData.get("impactedOps")),
+    };
+  }
+  if (formulaType === "secos_ops_atendidas_erradas") {
+    return {
+      wrongOps: parseLocalizedNumber(formData.get("wrongOps")),
+      requestedOps: parseLocalizedNumber(formData.get("requestedOps")),
+    };
+  }
+  if (formulaType === "secos_erros_movimentacao") {
+    return {
+      movementErrors: parseLocalizedNumber(formData.get("movementErrors")),
+      movedItems: parseLocalizedNumber(formData.get("movedItems")),
+    };
+  }
+  if (formulaType === "secos_erros_expedicao_fabrica") {
+    return {
+      expeditionErrorValue: parseLocalizedNumber(formData.get("expeditionErrorValue")),
+    };
+  }
+  if (formulaType === "secos_tempo_carregamento_carretas") {
+    return {
+      loadedTrucks: parseLocalizedNumber(formData.get("loadedTrucks")),
+      loadingTotalMinutes: parseLocalizedNumber(formData.get("loadingTotalMinutes")),
+    };
+  }
+  if (formulaType === "secos_produtividade_individual") {
+    return {
+      completedShiftActivities: parseLocalizedNumber(formData.get("completedShiftActivities")),
+      collaboratorCount: parseLocalizedNumber(formData.get("collaboratorCount")),
+    };
+  }
   if (formulaType === "movimentacao_colaborador") {
     return {
       movedItems: parseLocalizedNumber(formData.get("movedItems")),
@@ -3383,6 +3674,32 @@ function buildHistoryEntry(dateValue, numericValue, formulaType, formulaPayload,
   if (formulaType === "perdas_inventario") {
     entry.lossItems = formulaPayload.lossItems;
     entry.inventoriedItems = formulaPayload.inventoriedItems;
+  }
+  if (formulaType === "secos_perdas_picks") {
+    entry.adjustedValue = formulaPayload.adjustedValue;
+    entry.totalStockValue = formulaPayload.totalStockValue;
+  }
+  if (formulaType === "secos_ruptura_embalagens") {
+    entry.impactedOps = formulaPayload.impactedOps;
+  }
+  if (formulaType === "secos_ops_atendidas_erradas") {
+    entry.wrongOps = formulaPayload.wrongOps;
+    entry.requestedOps = formulaPayload.requestedOps;
+  }
+  if (formulaType === "secos_erros_movimentacao") {
+    entry.movementErrors = formulaPayload.movementErrors;
+    entry.movedItems = formulaPayload.movedItems;
+  }
+  if (formulaType === "secos_erros_expedicao_fabrica") {
+    entry.expeditionErrorValue = formulaPayload.expeditionErrorValue;
+  }
+  if (formulaType === "secos_tempo_carregamento_carretas") {
+    entry.loadedTrucks = formulaPayload.loadedTrucks;
+    entry.loadingTotalMinutes = formulaPayload.loadingTotalMinutes;
+  }
+  if (formulaType === "secos_produtividade_individual") {
+    entry.completedShiftActivities = formulaPayload.completedShiftActivities;
+    entry.collaboratorCount = formulaPayload.collaboratorCount;
   }
   if (formulaType === "movimentacao_colaborador") {
     entry.movedItems = formulaPayload.movedItems;
