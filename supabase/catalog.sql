@@ -52,7 +52,7 @@ from (
     ('estoque', 'Cumprimento do Plano de Inventário', '%', 100, 'higher', 'Meta', 'estoque_cumprimento_plano_inventario', 3),
     ('estoque', 'Índice de Divergências Tratadas', '%', 98, 'higher', 'Meta', 'estoque_divergencias_tratadas', 4),
     ('estoque', 'Estoque Slow Mover (Maior que 90 dias)', '%', 10, 'lower', 'Meta', 'estoque_slow_mover', 5),
-    ('estoque', 'Produtividade Individual (Contagens)', '%', 100, 'higher', 'Meta', 'estoque_produtividade_individual_contagens', 6),
+    ('estoque', 'Produtividade de Contagens', 'SKU/dia', 20, 'higher', 'Meta', 'estoque_produtividade_individual_contagens', 6),
 
     ('secos', 'Movimentação por Colaborador', 'itens/colab', 50, 'higher', 'Meta', 'movimentacao_colaborador', 1),
     ('secos', 'Tempo Médio de Carregamento', 'min', 70, 'lower', 'Limite', 'tempo_carregamento', 2),

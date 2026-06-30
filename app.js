@@ -104,13 +104,11 @@ const departments = {
       { name: "Índice de Divergências Tratadas", unit: "%", target: 98, goal: "higher", targetLabel: "Meta" },
       { name: "Estoque Slow Mover (Maior que 90 dias)", unit: "%", target: 10, goal: "lower", targetLabel: "Meta" },
       {
-        name: "Produtividade Individual (Contagens)",
-        unit: "%",
-        target: 100,
+        name: "Produtividade de Contagens",
+        unit: "SKU/dia",
+        target: 20,
         goal: "higher",
         targetLabel: "Meta",
-        targetDisplay: "Meta 20 SKU/dia",
-        targetValueDisplay: "20 SKU/dia",
       },
     ],
     launches: [],
@@ -791,14 +789,12 @@ function getCardDetails(indicator) {
     }
   }
 
-  if (indicatorKey.includes("produtividade") && indicatorKey.includes("individual") && indicatorKey.includes("contagens")) {
-    const rows = rowsWithFields(["dailyCountedSkus", "dailySkuTarget"]);
+  if (indicatorKey.includes("produtividade") && indicatorKey.includes("contagens")) {
+    const rows = rowsWithFields(["dailyCountedSkus", "collaboratorCount"]);
     if (rows.length > 0) {
-      const collaborators = new Set(rows.map((item) => String(item.collaboratorName || "").trim()).filter(Boolean));
       return [
-        ["SKUs contados", formatNumber(sumField(rows, "dailyCountedSkus"))],
-        ["Meta diária", `${formatNumber(averageField(rows, "dailySkuTarget"))} SKU/dia`],
-        ["Colaboradores", formatNumber(collaborators.size)],
+        ["Contagens realizadas", formatNumber(sumField(rows, "dailyCountedSkus"))],
+        ["Colaboradores", formatNumber(sumField(rows, "collaboratorCount"))],
       ];
     }
   }
@@ -1436,7 +1432,7 @@ function getLaunchFormulaType(indicatorName) {
     if (key.includes("slow") && key.includes("mover")) {
       return "estoque_slow_mover";
     }
-    if (key.includes("produtividade") && key.includes("individual") && key.includes("contagens")) {
+    if (key.includes("produtividade") && key.includes("contagens")) {
       return "estoque_produtividade_individual_contagens";
     }
   }
@@ -1646,10 +1642,11 @@ launchFormulaDefinitions.produtividade_individual = {
 };
 
 launchFormulaDefinitions.estoque_produtividade_individual_contagens = {
-  title: "Cálculo de Produtividade Individual (Contagens)",
-  hint: "Produtividade (%) = (SKUs contados no dia / Meta diária de SKU) x 100.",
-  fields: ["collaboratorName", "dailyCountedSkus", "dailySkuTarget"],
+  title: "Cálculo de Produtividade de Contagens",
+  hint: "Produtividade de contagens = Contagens realizadas / Total de colaboradores.",
+  fields: ["dailyCountedSkus", "collaboratorCount"],
   allowNegative: false,
+  resultSuffix: " SKU/dia",
 };
 
 launchFormulaDefinitions.tempo_recebimento = {
@@ -1929,9 +1926,9 @@ function computeLaunchFormulaValue(formulaType) {
 
   if (formulaType === "estoque_produtividade_individual_contagens") {
     const dailyCountedSkus = getLaunchFormulaFieldValue("dailyCountedSkus");
-    const dailySkuTarget = getLaunchFormulaFieldValue("dailySkuTarget");
-    if (!Number.isFinite(dailyCountedSkus) || !Number.isFinite(dailySkuTarget) || dailySkuTarget <= 0) return NaN;
-    return (dailyCountedSkus / dailySkuTarget) * 100;
+    const collaboratorCount = getLaunchFormulaFieldValue("collaboratorCount");
+    if (!Number.isFinite(dailyCountedSkus) || !Number.isFinite(collaboratorCount) || collaboratorCount <= 0) return NaN;
+    return dailyCountedSkus / collaboratorCount;
   }
 
   if (formulaType === "tempo_recebimento") {
@@ -2100,7 +2097,6 @@ function syncLaunchFormByIndicator() {
     "totalAttendances",
     "completedShiftActivities",
     "dailyCountedSkus",
-    "dailySkuTarget",
     "initialStock",
     "entriesValue",
     "outboundValue",
@@ -2965,11 +2961,10 @@ function applyEstoqueLaunchFormulaDetails(indicator, formulaType, payload) {
   }
 
   if (formulaType === "estoque_produtividade_individual_contagens") {
-    if (!Number.isFinite(payload.dailyCountedSkus) || !Number.isFinite(payload.dailySkuTarget)) return;
+    if (!Number.isFinite(payload.dailyCountedSkus) || !Number.isFinite(payload.collaboratorCount)) return;
     indicator.details = [
-      ["Colaborador", payload.collaboratorName || "-"],
-      ["SKUs contados", formatNumber(payload.dailyCountedSkus)],
-      ["Meta diária", `${formatNumber(payload.dailySkuTarget)} SKU/dia`],
+      ["Contagens realizadas", formatNumber(payload.dailyCountedSkus)],
+      ["Colaboradores", formatNumber(payload.collaboratorCount)],
     ];
   }
 
@@ -3185,9 +3180,8 @@ function extractFormulaPayload(formData, formulaType) {
   }
   if (formulaType === "estoque_produtividade_individual_contagens") {
     return {
-      collaboratorName: repairTextEncoding(String(formData.get("collaboratorName") || "").trim()),
       dailyCountedSkus: parseLocalizedNumber(formData.get("dailyCountedSkus")),
-      dailySkuTarget: parseLocalizedNumber(formData.get("dailySkuTarget")),
+      collaboratorCount: parseLocalizedNumber(formData.get("collaboratorCount")),
     };
   }
   if (formulaType === "tempo_recebimento") {
@@ -3359,9 +3353,8 @@ function buildHistoryEntry(dateValue, numericValue, formulaType, formulaPayload,
     entry.collaboratorCount = formulaPayload.collaboratorCount;
   }
   if (formulaType === "estoque_produtividade_individual_contagens") {
-    entry.collaboratorName = formulaPayload.collaboratorName;
     entry.dailyCountedSkus = formulaPayload.dailyCountedSkus;
-    entry.dailySkuTarget = formulaPayload.dailySkuTarget;
+    entry.collaboratorCount = formulaPayload.collaboratorCount;
   }
   if (formulaType === "tempo_recebimento") {
     entry.receivedLoads = formulaPayload.receivedLoads;
