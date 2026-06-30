@@ -2228,7 +2228,11 @@ function renderIndicatorOptions() {
   const launchOptions = departmentIndicatorNames
     .map((name) => `<option>${escapeHtml(name)}</option>`)
     .join("");
-  const actionOptions = uniqueIndicatorNames([...departmentIndicatorNames, actionExtraIndicatorName])
+  const actionIndicatorNames =
+    selectedDepartmentKey === "recebimento"
+      ? departmentIndicatorNames
+      : [...departmentIndicatorNames, actionExtraIndicatorName];
+  const actionOptions = uniqueIndicatorNames(actionIndicatorNames)
     .map((name) => `<option>${escapeHtml(name)}</option>`)
     .join("");
   qs("#launchIndicator").innerHTML = launchOptions;
