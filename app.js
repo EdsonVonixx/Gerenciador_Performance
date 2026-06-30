@@ -854,6 +854,14 @@ function getCardDetails(indicator) {
   }
 
   if (indicatorKey.includes("produtividade") && indicatorKey.includes("individual")) {
+    const usageRows = rowsWithFields(["completedShiftActivities", "collaboratorCount"]);
+    if (indicatorKey.includes("uso") && indicatorKey.includes("consumo") && usageRows.length > 0) {
+      return [
+        ["Atividades concluídas no turno", formatNumber(sumField(usageRows, "completedShiftActivities"))],
+        ["Colaboradores", formatNumber(sumField(usageRows, "collaboratorCount"))],
+      ];
+    }
+
     const rows = rowsWithFields(["completedActivities", "totalAttendances"]);
     if (rows.length > 0) {
       const collaborators = new Set(rows.map((item) => String(item.collaboratorName || "").trim()).filter(Boolean));
@@ -1631,9 +1639,9 @@ launchFormulaDefinitions.estoque_slow_mover = {
 };
 
 launchFormulaDefinitions.produtividade_individual = {
-  title: "Cálculo de Produtividade Individual",
-  hint: "Produtividade (%) = (Atividades concluídas pelo colaborador / Total de atendimentos) x 100.",
-  fields: ["collaboratorName", "completedActivities", "totalAttendances"],
+  title: "Cálculo de Produtividade Individual (Uso & Consumo)",
+  hint: "Produtividade (%) = (Atividades concluídas no turno / Total de colaboradores) x 100.",
+  fields: ["completedShiftActivities", "collaboratorCount"],
   allowNegative: false,
 };
 
@@ -1909,10 +1917,12 @@ function computeLaunchFormulaValue(formulaType) {
   }
 
   if (formulaType === "produtividade_individual") {
-    const completedActivities = getLaunchFormulaFieldValue("completedActivities");
-    const totalAttendances = getLaunchFormulaFieldValue("totalAttendances");
-    if (!Number.isFinite(completedActivities) || !Number.isFinite(totalAttendances) || totalAttendances <= 0) return NaN;
-    return (completedActivities / totalAttendances) * 100;
+    const completedShiftActivities = getLaunchFormulaFieldValue("completedShiftActivities");
+    const collaboratorCount = getLaunchFormulaFieldValue("collaboratorCount");
+    if (!Number.isFinite(completedShiftActivities) || !Number.isFinite(collaboratorCount) || collaboratorCount <= 0) {
+      return NaN;
+    }
+    return (completedShiftActivities / collaboratorCount) * 100;
   }
 
   if (formulaType === "estoque_produtividade_individual_contagens") {
@@ -2086,6 +2096,7 @@ function syncLaunchFormByIndicator() {
     "collaboratorName",
     "completedActivities",
     "totalAttendances",
+    "completedShiftActivities",
     "dailyCountedSkus",
     "dailySkuTarget",
     "initialStock",
@@ -2803,10 +2814,10 @@ function applyAlmoxarifadoLaunchFormulaDetails(indicator, formulaType, payload) 
   }
 
   if (formulaType === "produtividade_individual") {
-    if (!Number.isFinite(payload.completedActivities) || !Number.isFinite(payload.totalAttendances)) return;
+    if (!Number.isFinite(payload.completedShiftActivities) || !Number.isFinite(payload.collaboratorCount)) return;
     indicator.details = [
-      ["Colaborador", payload.collaboratorName || "-"],
-      ["Atendimentos", formatNumber(payload.totalAttendances)],
+      ["Atividades concluídas no turno", formatNumber(payload.completedShiftActivities)],
+      ["Colaboradores", formatNumber(payload.collaboratorCount)],
     ];
   }
 }
@@ -3163,9 +3174,8 @@ function extractFormulaPayload(formData, formulaType) {
   }
   if (formulaType === "produtividade_individual") {
     return {
-      collaboratorName: repairTextEncoding(String(formData.get("collaboratorName") || "").trim()),
-      completedActivities: parseLocalizedNumber(formData.get("completedActivities")),
-      totalAttendances: parseLocalizedNumber(formData.get("totalAttendances")),
+      completedShiftActivities: parseLocalizedNumber(formData.get("completedShiftActivities")),
+      collaboratorCount: parseLocalizedNumber(formData.get("collaboratorCount")),
     };
   }
   if (formulaType === "estoque_produtividade_individual_contagens") {
@@ -3341,9 +3351,8 @@ function buildHistoryEntry(dateValue, numericValue, formulaType, formulaPayload,
     entry.totalStockSkus = formulaPayload.totalStockSkus;
   }
   if (formulaType === "produtividade_individual") {
-    entry.collaboratorName = formulaPayload.collaboratorName;
-    entry.completedActivities = formulaPayload.completedActivities;
-    entry.totalAttendances = formulaPayload.totalAttendances;
+    entry.completedShiftActivities = formulaPayload.completedShiftActivities;
+    entry.collaboratorCount = formulaPayload.collaboratorCount;
   }
   if (formulaType === "estoque_produtividade_individual_contagens") {
     entry.collaboratorName = formulaPayload.collaboratorName;
