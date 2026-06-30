@@ -182,6 +182,16 @@
                     <input name="wmsStock" type="number" min="0" step="1" placeholder="Ex.: 32566" />
                   </label>
 
+                  <label class="formula-input hidden" data-field="divergentSkus">
+                    SKUs com divergência contábil x WMS
+                    <input name="divergentSkus" type="number" min="0" step="1" placeholder="Ex.: 150" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="totalSkus">
+                    Total de SKUs
+                    <input name="totalSkus" type="number" min="1" step="1" placeholder="Ex.: 938" />
+                  </label>
+
                   <label class="formula-input hidden" data-field="totalItemsStock">
                     Quantidade total de itens em estoque
                     <input name="totalItemsStock" type="number" min="0" step="1" placeholder="Ex.: 928" />
@@ -190,6 +200,56 @@
                   <label class="formula-input hidden" data-field="obsoleteItems">
                     Quantidade de itens obsoletos
                     <input name="obsoleteItems" type="number" min="0" step="1" placeholder="Ex.: 279" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="dailyReceipts">
+                    Recebimentos do dia
+                    <input name="dailyReceipts" type="number" min="0" step="1" placeholder="Ex.: 90" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="plannedReceiptCapacity">
+                    Capacidade planejada de recebimento
+                    <input name="plannedReceiptCapacity" type="number" min="1" step="1" placeholder="Ex.: 100" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="onTimeSupplierDeliveries">
+                    Entregas recebidas no prazo
+                    <input name="onTimeSupplierDeliveries" type="number" min="0" step="1" placeholder="Ex.: 90" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="scheduledSupplierDeliveries">
+                    Entregas programadas
+                    <input name="scheduledSupplierDeliveries" type="number" min="1" step="1" placeholder="Ex.: 100" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="completedReceiptsOnTime">
+                    Recebimentos concluídos dentro do prazo
+                    <input name="completedReceiptsOnTime" type="number" min="0" step="1" placeholder="Ex.: 190" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="totalReceipts">
+                    Total de recebimentos
+                    <input name="totalReceipts" type="number" min="1" step="1" placeholder="Ex.: 200" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="releaseTotalHours">
+                    Soma do tempo de liberação (horas)
+                    <input name="releaseTotalHours" type="number" min="0" step="0.01" placeholder="Ex.: 240" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="releasedReceipts">
+                    Recebimentos liberados
+                    <input name="releasedReceipts" type="number" min="1" step="1" placeholder="Ex.: 20" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="readdressedMaterials">
+                    Materiais reendereçados sem planejamento
+                    <input name="readdressedMaterials" type="number" min="0" step="1" placeholder="Ex.: 2" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="totalStoredMaterials">
+                    Total de materiais armazenados
+                    <input name="totalStoredMaterials" type="number" min="1" step="1" placeholder="Ex.: 200" />
                   </label>
 
                   <label class="formula-input hidden" data-field="missingItems">
@@ -227,9 +287,24 @@
                     <input name="replenishmentSkus" type="number" min="1" step="1" placeholder="Ex.: 925" />
                   </label>
 
+                  <label class="formula-input hidden" data-field="treatedDivergencesOnTime">
+                    Divergências tratadas dentro do prazo
+                    <input name="treatedDivergencesOnTime" type="number" min="0" step="1" placeholder="Ex.: 9" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="totalDivergences">
+                    Total de divergências
+                    <input name="totalDivergences" type="number" min="1" step="1" placeholder="Ex.: 10" />
+                  </label>
+
                   <label class="formula-input hidden" data-field="slowMovingSkus">
                     SKUs há mais de 90 dias
                     <input name="slowMovingSkus" type="number" min="0" step="1" placeholder="Ex.: 300" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="totalStockSkus">
+                    Total de SKUs no estoque
+                    <input name="totalStockSkus" type="number" min="1" step="1" placeholder="Ex.: 930" />
                   </label>
 
                   <label class="formula-input hidden" data-field="collaboratorName">
@@ -245,6 +320,16 @@
                   <label class="formula-input hidden" data-field="totalAttendances">
                     Total de atendimentos
                     <input name="totalAttendances" type="number" min="1" step="1" placeholder="Ex.: 100" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="dailyCountedSkus">
+                    SKUs contados no dia
+                    <input name="dailyCountedSkus" type="number" min="0" step="1" placeholder="Ex.: 25" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="dailySkuTarget">
+                    Meta diária de SKU
+                    <input name="dailySkuTarget" type="number" min="1" step="1" placeholder="Ex.: 20" />
                   </label>
 
                   <label class="formula-input hidden" data-field="initialStock">

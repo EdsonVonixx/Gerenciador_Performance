@@ -84,11 +84,12 @@ const departments = {
     label: "Recebimento e Armazenagem",
     color: "#2f68a7",
     indicators: [
-      { name: "Tempo de Recebimento", unit: "min", target: 60, goal: "lower" },
-      { name: "SLA de Armazenagem", unit: "%", target: 95, goal: "higher" },
-      { name: "Avarias no Recebimento", unit: "%", target: 0.5, goal: "lower" },
-      { name: "Acurácia de Conferência", unit: "%", target: 99, goal: "higher" },
-      { name: "Giro de Docas", unit: "%", target: 90, goal: "higher" },
+      { name: "Capacidade de Recebimento Diário", unit: "%", target: 85, goal: "higher", targetLabel: "Meta" },
+      { name: "OTIF de Recebimento de Fornecedores x Follow Up", unit: "%", target: 95, goal: "higher", targetLabel: "Meta" },
+      { name: "Eficiência de Recebimento", unit: "%", target: 95, goal: "higher", targetLabel: "Meta" },
+      { name: "Tempo Médio de Liberação do Material", unit: "h", target: 8, goal: "lower", targetLabel: "Até" },
+      { name: "Erros de Armazenagem e Movimentação", unit: "%", target: 3, goal: "lower", targetLabel: "Meta" },
+      { name: "Produtividade Individual", unit: "%", target: null, goal: "tracking", statusText: "Acompanhamento" },
     ],
     launches: [],
     records: [],
@@ -97,11 +98,20 @@ const departments = {
     label: "Estoque e Inventário",
     color: "#7352a3",
     indicators: [
-      { name: "Acuracidade do Estoque", unit: "%", target: 98, goal: "higher" },
-      { name: "Contábil x WMS", unit: "%", target: 1, warnLimit: 3, goal: "lower" },
-      { name: "Material Obsoleto", unit: "%", target: 5, goal: "lower" },
-      { name: "Produtividade de Contagens", unit: "itens/colab", target: 40, goal: "higher" },
-      { name: "Perdas de Inventário", unit: "%", target: 1, goal: "lower" },
+      { name: "Acuracidade de Estoque (SKU)", unit: "%", target: 95, goal: "higher", targetLabel: "Meta" },
+      { name: "Divergência Contábil x WMS (SKU)", unit: "%", target: 8, goal: "lower", targetLabel: "Meta" },
+      { name: "Cumprimento do Plano de Inventário", unit: "%", target: 100, goal: "higher", targetLabel: "Meta" },
+      { name: "Índice de Divergências Tratadas", unit: "%", target: 98, goal: "higher", targetLabel: "Meta" },
+      { name: "Estoque Slow Mover (Maior que 90 dias)", unit: "%", target: 10, goal: "lower", targetLabel: "Meta" },
+      {
+        name: "Produtividade Individual (Contagens)",
+        unit: "%",
+        target: 100,
+        goal: "higher",
+        targetLabel: "Meta",
+        targetDisplay: "Meta 20 SKU/dia",
+        targetValueDisplay: "20 SKU/dia",
+      },
     ],
     launches: [],
     records: [],
@@ -636,7 +646,12 @@ function formatNumber(value) {
 
 function shouldDisplayWithoutDecimalsInChart(indicator) {
   const key = normalizeTextKey(indicator?.name);
-  return key === "tempo de recebimento" || key === "produtividade de contagens";
+  return (
+    key === "tempo de recebimento" ||
+    key === "tempo medio de liberacao do material" ||
+    key === "produtividade de contagens" ||
+    key === "produtividade individual (contagens)"
+  );
 }
 
 function shouldDisplayWithoutDecimalsInCard(indicator) {
@@ -684,6 +699,109 @@ function getCardDetails(indicator) {
   const rowsWithFields = (fields) =>
     history.filter((item) => fields.every((field) => Number.isFinite(Number(item[field]))));
   const sumField = (rows, field) => rows.reduce((sum, item) => sum + Number(item[field]), 0);
+  const averageField = (rows, field) => sumField(rows, field) / rows.length;
+
+  if (indicatorKey.includes("capacidade") && indicatorKey.includes("recebimento")) {
+    const rows = rowsWithFields(["dailyReceipts", "plannedReceiptCapacity"]);
+    if (rows.length > 0) {
+      return [
+        ["Recebimentos", formatNumber(sumField(rows, "dailyReceipts"))],
+        ["Capacidade planejada", formatNumber(sumField(rows, "plannedReceiptCapacity"))],
+      ];
+    }
+  }
+
+  if (indicatorKey.includes("otif") && indicatorKey.includes("recebimento")) {
+    const rows = rowsWithFields(["onTimeSupplierDeliveries", "scheduledSupplierDeliveries"]);
+    if (rows.length > 0) {
+      return [
+        ["Entregas no prazo", formatNumber(sumField(rows, "onTimeSupplierDeliveries"))],
+        ["Entregas programadas", formatNumber(sumField(rows, "scheduledSupplierDeliveries"))],
+      ];
+    }
+  }
+
+  if (indicatorKey.includes("eficiencia") && indicatorKey.includes("recebimento")) {
+    const rows = rowsWithFields(["completedReceiptsOnTime", "totalReceipts"]);
+    if (rows.length > 0) {
+      return [
+        ["Recebimentos no prazo", formatNumber(sumField(rows, "completedReceiptsOnTime"))],
+        ["Total de recebimentos", formatNumber(sumField(rows, "totalReceipts"))],
+      ];
+    }
+  }
+
+  if (indicatorKey.includes("tempo") && indicatorKey.includes("liberacao") && indicatorKey.includes("material")) {
+    const rows = rowsWithFields(["releaseTotalHours", "releasedReceipts"]);
+    if (rows.length > 0) {
+      return [
+        ["Horas totais", `${formatNumber(sumField(rows, "releaseTotalHours"))} h`],
+        ["Recebimentos liberados", formatNumber(sumField(rows, "releasedReceipts"))],
+      ];
+    }
+  }
+
+  if (indicatorKey.includes("erros") && indicatorKey.includes("armazenagem") && indicatorKey.includes("movimentacao")) {
+    const rows = rowsWithFields(["readdressedMaterials", "totalStoredMaterials"]);
+    if (rows.length > 0) {
+      return [
+        ["Materiais reendereçados", formatNumber(sumField(rows, "readdressedMaterials"))],
+        ["Materiais armazenados", formatNumber(sumField(rows, "totalStoredMaterials"))],
+      ];
+    }
+  }
+
+  if (indicatorKey.includes("acuracidade") && indicatorKey.includes("estoque") && indicatorKey.includes("sku")) {
+    const rows = rowsWithFields(["correctItems", "totalCountedItems"]);
+    if (rows.length > 0) {
+      return [
+        ["Itens corretos", formatNumber(sumField(rows, "correctItems"))],
+        ["Itens contados", formatNumber(sumField(rows, "totalCountedItems"))],
+      ];
+    }
+  }
+
+  if (indicatorKey.includes("divergencia") && indicatorKey.includes("contabil") && indicatorKey.includes("wms")) {
+    const rows = rowsWithFields(["divergentSkus", "totalSkus"]);
+    if (rows.length > 0) {
+      return [
+        ["SKUs divergentes", formatNumber(sumField(rows, "divergentSkus"))],
+        ["Total de SKUs", formatNumber(sumField(rows, "totalSkus"))],
+      ];
+    }
+  }
+
+  if (indicatorKey.includes("indice") && indicatorKey.includes("divergencias") && indicatorKey.includes("tratadas")) {
+    const rows = rowsWithFields(["treatedDivergencesOnTime", "totalDivergences"]);
+    if (rows.length > 0) {
+      return [
+        ["Divergências tratadas", formatNumber(sumField(rows, "treatedDivergencesOnTime"))],
+        ["Total de divergências", formatNumber(sumField(rows, "totalDivergences"))],
+      ];
+    }
+  }
+
+  if (indicatorKey.includes("estoque") && indicatorKey.includes("slow") && indicatorKey.includes("mover")) {
+    const rows = rowsWithFields(["slowMovingSkus", "totalStockSkus"]);
+    if (rows.length > 0) {
+      return [
+        ["SKUs > 90 dias", formatNumber(sumField(rows, "slowMovingSkus"))],
+        ["Total de SKUs", formatNumber(sumField(rows, "totalStockSkus"))],
+      ];
+    }
+  }
+
+  if (indicatorKey.includes("produtividade") && indicatorKey.includes("individual") && indicatorKey.includes("contagens")) {
+    const rows = rowsWithFields(["dailyCountedSkus", "dailySkuTarget"]);
+    if (rows.length > 0) {
+      const collaborators = new Set(rows.map((item) => String(item.collaboratorName || "").trim()).filter(Boolean));
+      return [
+        ["SKUs contados", formatNumber(sumField(rows, "dailyCountedSkus"))],
+        ["Meta diária", `${formatNumber(averageField(rows, "dailySkuTarget"))} SKU/dia`],
+        ["Colaboradores", formatNumber(collaborators.size)],
+      ];
+    }
+  }
 
   if (indicatorKey.includes("ruptura") && indicatorKey.includes("estocaveis")) {
     const rows = rowsWithFields(["zeroStockMaintenanceItems", "stockableMaintenanceItems"]);
@@ -889,6 +1007,9 @@ function getCardDetails(indicator) {
 }
 
 function formatTarget(indicator) {
+  if (indicator.targetDisplay) {
+    return indicator.targetDisplay;
+  }
   if (indicator.goal === "tracking" || indicator.target === null || indicator.target === undefined) {
     return "Acompanhamento";
   }
@@ -900,6 +1021,9 @@ function formatTarget(indicator) {
 }
 
 function formatTargetValue(indicator) {
+  if (indicator.targetValueDisplay) {
+    return indicator.targetValueDisplay;
+  }
   if (indicator.goal === "tracking" || indicator.target === null || indicator.target === undefined) {
     return "Acompanhamento";
   }
@@ -1083,7 +1207,10 @@ function restorePrototypeState() {
     if (!department || !savedDepartment) return;
 
     if (Array.isArray(savedDepartment.launches)) {
-      department.launches = repairStoredText(clonePlain(savedDepartment.launches));
+      const validIndicators = new Set((department.indicators || []).map((indicator) => normalizeTextKey(indicator.name)));
+      department.launches = repairStoredText(clonePlain(savedDepartment.launches)).filter((launch) =>
+        validIndicators.has(normalizeTextKey(launch.indicator)),
+      );
     }
 
     if (Array.isArray(savedDepartment.records)) {
@@ -1265,6 +1392,46 @@ function parseLocalizedNumber(rawValue) {
 
 function getLaunchFormulaType(indicatorName) {
   const key = normalizeTextKey(indicatorName);
+  if (selectedDepartmentKey === "recebimento") {
+    if (key.includes("capacidade") && key.includes("recebimento")) {
+      return "recebimento_capacidade_diaria";
+    }
+    if (key.includes("otif") && key.includes("recebimento")) {
+      return "recebimento_otif_fornecedores";
+    }
+    if (key.includes("eficiencia") && key.includes("recebimento")) {
+      return "recebimento_eficiencia";
+    }
+    if (key.includes("tempo") && key.includes("liberacao") && key.includes("material")) {
+      return "recebimento_tempo_liberacao";
+    }
+    if (key.includes("erros") && key.includes("armazenagem") && key.includes("movimentacao")) {
+      return "recebimento_erros_armazenagem";
+    }
+    if (key.includes("produtividade") && key.includes("individual")) {
+      return "recebimento_produtividade_individual";
+    }
+  }
+  if (selectedDepartmentKey === "estoque") {
+    if (key.includes("acuracidade") && key.includes("estoque") && key.includes("sku")) {
+      return "estoque_acuracidade_sku";
+    }
+    if (key.includes("divergencia") && key.includes("contabil") && key.includes("wms")) {
+      return "estoque_divergencia_wms_sku";
+    }
+    if (key.includes("cumprimento") && key.includes("plano") && key.includes("inventario")) {
+      return "estoque_cumprimento_plano_inventario";
+    }
+    if (key.includes("indice") && key.includes("divergencias") && key.includes("tratadas")) {
+      return "estoque_divergencias_tratadas";
+    }
+    if (key.includes("slow") && key.includes("mover")) {
+      return "estoque_slow_mover";
+    }
+    if (key.includes("produtividade") && key.includes("individual") && key.includes("contagens")) {
+      return "estoque_produtividade_individual_contagens";
+    }
+  }
   if (key.includes("ruptura") && key.includes("estocave")) return "ruptura_estocaveis";
   if (key.includes("acuracidade") && key.includes("estoque") && key.includes("itens")) return "acuracidade_uso_consumo";
   if (key.includes("aderencia") && key.includes("estoque") && key.includes("minimo")) return "aderencia_estoque_minimo";
@@ -1350,6 +1517,49 @@ launchFormulaDefinitions.giro_diario = {
   allowNegative: false,
 };
 
+launchFormulaDefinitions.recebimento_capacidade_diaria = {
+  title: "Cálculo de Capacidade de Recebimento Diário",
+  hint: "Capacidade (%) = (Recebimentos do dia / Capacidade planejada de recebimento) x 100.",
+  fields: ["dailyReceipts", "plannedReceiptCapacity"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.recebimento_otif_fornecedores = {
+  title: "Cálculo de OTIF de Recebimento de Fornecedores x Follow Up",
+  hint: "OTIF (%) = (Entregas recebidas no prazo / Entregas programadas) x 100.",
+  fields: ["onTimeSupplierDeliveries", "scheduledSupplierDeliveries"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.recebimento_eficiencia = {
+  title: "Cálculo de Eficiência de Recebimento",
+  hint: "Eficiência (%) = (Recebimentos concluídos dentro do prazo / Total de recebimentos) x 100.",
+  fields: ["completedReceiptsOnTime", "totalReceipts"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.recebimento_tempo_liberacao = {
+  title: "Cálculo de Tempo Médio de Liberação do Material",
+  hint: "Tempo médio (h) = Soma do tempo de liberação / Total de recebimentos liberados.",
+  fields: ["releaseTotalHours", "releasedReceipts"],
+  allowNegative: false,
+  resultSuffix: " h",
+};
+
+launchFormulaDefinitions.recebimento_erros_armazenagem = {
+  title: "Cálculo de Erros de Armazenagem e Movimentação",
+  hint: "Erros (%) = (Materiais reendereçados sem planejamento / Total de materiais armazenados) x 100.",
+  fields: ["readdressedMaterials", "totalStoredMaterials"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.recebimento_produtividade_individual = {
+  title: "Cálculo de Produtividade Individual",
+  hint: "Produtividade (%) = (Atividades concluídas pelo colaborador / Total de atendimentos) x 100.",
+  fields: ["collaboratorName", "completedActivities", "totalAttendances"],
+  allowNegative: false,
+};
+
 launchFormulaDefinitions.ruptura_estocaveis = {
   title: "Cálculo de Ruptura de Material de Estocáveis",
   hint: "Ruptura (%) = (Itens de manutenção com estoque zerado / Materiais estocáveis de manutenção) x 100.",
@@ -1361,6 +1571,20 @@ launchFormulaDefinitions.acuracidade_uso_consumo = {
   title: "Cálculo de Acuracidade de Estoque (Itens)",
   hint: "Acuracidade (%) = (Quantidade de itens corretos / Total de itens contados) x 100.",
   fields: ["correctItems", "totalCountedItems"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.estoque_acuracidade_sku = {
+  title: "Cálculo de Acuracidade de Estoque (SKU)",
+  hint: "Acuracidade (%) = (Quantidade de itens corretos / Total de itens contados) x 100.",
+  fields: ["correctItems", "totalCountedItems"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.estoque_divergencia_wms_sku = {
+  title: "Cálculo de Divergência Contábil x WMS (SKU)",
+  hint: "Divergência (%) = (SKUs com divergência contábil x WMS / Total de SKUs) x 100.",
+  fields: ["divergentSkus", "totalSkus"],
   allowNegative: false,
 };
 
@@ -1378,6 +1602,20 @@ launchFormulaDefinitions.cumprimento_plano_inventario = {
   allowNegative: false,
 };
 
+launchFormulaDefinitions.estoque_cumprimento_plano_inventario = {
+  title: "Cálculo de Cumprimento do Plano de Inventário",
+  hint: "Cumprimento (%) = (SKUs contados no período / Total de SKUs no estoque de reposição) x 100.",
+  fields: ["countedSkusPeriod", "replenishmentSkus"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.estoque_divergencias_tratadas = {
+  title: "Cálculo do Índice de Divergências Tratadas",
+  hint: "Índice (%) = (Divergências tratadas dentro do prazo / Total de divergências) x 100.",
+  fields: ["treatedDivergencesOnTime", "totalDivergences"],
+  allowNegative: false,
+};
+
 launchFormulaDefinitions.slow_mover = {
   title: "Cálculo de Estoque Slow Mover",
   hint: "Slow mover (%) = (SKUs há mais de 90 dias / Total de SKUs no estoque de reposição) x 100.",
@@ -1385,10 +1623,24 @@ launchFormulaDefinitions.slow_mover = {
   allowNegative: false,
 };
 
+launchFormulaDefinitions.estoque_slow_mover = {
+  title: "Cálculo de Estoque Slow Mover",
+  hint: "Slow mover (%) = (SKUs há mais de 90 dias / Total de SKUs no estoque) x 100.",
+  fields: ["slowMovingSkus", "totalStockSkus"],
+  allowNegative: false,
+};
+
 launchFormulaDefinitions.produtividade_individual = {
   title: "Cálculo de Produtividade Individual",
   hint: "Produtividade (%) = (Atividades concluídas pelo colaborador / Total de atendimentos) x 100.",
   fields: ["collaboratorName", "completedActivities", "totalAttendances"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.estoque_produtividade_individual_contagens = {
+  title: "Cálculo de Produtividade Individual (Contagens)",
+  hint: "Produtividade (%) = (SKUs contados no dia / Meta diária de SKU) x 100.",
+  fields: ["collaboratorName", "dailyCountedSkus", "dailySkuTarget"],
   allowNegative: false,
 };
 
@@ -1526,6 +1778,56 @@ function computeLaunchFormulaValue(formulaType) {
     return (outboundValue / averageStock) * 100;
   }
 
+  if (formulaType === "recebimento_capacidade_diaria") {
+    const dailyReceipts = getLaunchFormulaFieldValue("dailyReceipts");
+    const plannedReceiptCapacity = getLaunchFormulaFieldValue("plannedReceiptCapacity");
+    if (!Number.isFinite(dailyReceipts) || !Number.isFinite(plannedReceiptCapacity) || plannedReceiptCapacity <= 0) return NaN;
+    return (dailyReceipts / plannedReceiptCapacity) * 100;
+  }
+
+  if (formulaType === "recebimento_otif_fornecedores") {
+    const onTimeSupplierDeliveries = getLaunchFormulaFieldValue("onTimeSupplierDeliveries");
+    const scheduledSupplierDeliveries = getLaunchFormulaFieldValue("scheduledSupplierDeliveries");
+    if (
+      !Number.isFinite(onTimeSupplierDeliveries) ||
+      !Number.isFinite(scheduledSupplierDeliveries) ||
+      scheduledSupplierDeliveries <= 0
+    ) {
+      return NaN;
+    }
+    return (onTimeSupplierDeliveries / scheduledSupplierDeliveries) * 100;
+  }
+
+  if (formulaType === "recebimento_eficiencia") {
+    const completedReceiptsOnTime = getLaunchFormulaFieldValue("completedReceiptsOnTime");
+    const totalReceipts = getLaunchFormulaFieldValue("totalReceipts");
+    if (!Number.isFinite(completedReceiptsOnTime) || !Number.isFinite(totalReceipts) || totalReceipts <= 0) return NaN;
+    return (completedReceiptsOnTime / totalReceipts) * 100;
+  }
+
+  if (formulaType === "recebimento_tempo_liberacao") {
+    const releaseTotalHours = getLaunchFormulaFieldValue("releaseTotalHours");
+    const releasedReceipts = getLaunchFormulaFieldValue("releasedReceipts");
+    if (!Number.isFinite(releaseTotalHours) || !Number.isFinite(releasedReceipts) || releasedReceipts <= 0) return NaN;
+    return releaseTotalHours / releasedReceipts;
+  }
+
+  if (formulaType === "recebimento_erros_armazenagem") {
+    const readdressedMaterials = getLaunchFormulaFieldValue("readdressedMaterials");
+    const totalStoredMaterials = getLaunchFormulaFieldValue("totalStoredMaterials");
+    if (!Number.isFinite(readdressedMaterials) || !Number.isFinite(totalStoredMaterials) || totalStoredMaterials <= 0) {
+      return NaN;
+    }
+    return (readdressedMaterials / totalStoredMaterials) * 100;
+  }
+
+  if (formulaType === "recebimento_produtividade_individual") {
+    const completedActivities = getLaunchFormulaFieldValue("completedActivities");
+    const totalAttendances = getLaunchFormulaFieldValue("totalAttendances");
+    if (!Number.isFinite(completedActivities) || !Number.isFinite(totalAttendances) || totalAttendances <= 0) return NaN;
+    return (completedActivities / totalAttendances) * 100;
+  }
+
   if (formulaType === "ruptura_estocaveis") {
     const zeroStockMaintenanceItems = getLaunchFormulaFieldValue("zeroStockMaintenanceItems");
     const stockableMaintenanceItems = getLaunchFormulaFieldValue("stockableMaintenanceItems");
@@ -1546,6 +1848,20 @@ function computeLaunchFormulaValue(formulaType) {
     return (correctItems / totalCountedItems) * 100;
   }
 
+  if (formulaType === "estoque_acuracidade_sku") {
+    const correctItems = getLaunchFormulaFieldValue("correctItems");
+    const totalCountedItems = getLaunchFormulaFieldValue("totalCountedItems");
+    if (!Number.isFinite(correctItems) || !Number.isFinite(totalCountedItems) || totalCountedItems <= 0) return NaN;
+    return (correctItems / totalCountedItems) * 100;
+  }
+
+  if (formulaType === "estoque_divergencia_wms_sku") {
+    const divergentSkus = getLaunchFormulaFieldValue("divergentSkus");
+    const totalSkus = getLaunchFormulaFieldValue("totalSkus");
+    if (!Number.isFinite(divergentSkus) || !Number.isFinite(totalSkus) || totalSkus <= 0) return NaN;
+    return (divergentSkus / totalSkus) * 100;
+  }
+
   if (formulaType === "aderencia_estoque_minimo") {
     const itemsAboveMinimum = getLaunchFormulaFieldValue("itemsAboveMinimum");
     const stockableMaintenanceItems = getLaunchFormulaFieldValue("stockableMaintenanceItems");
@@ -1562,6 +1878,22 @@ function computeLaunchFormulaValue(formulaType) {
     return (countedSkusPeriod / replenishmentSkus) * 100;
   }
 
+  if (formulaType === "estoque_cumprimento_plano_inventario") {
+    const countedSkusPeriod = getLaunchFormulaFieldValue("countedSkusPeriod");
+    const replenishmentSkus = getLaunchFormulaFieldValue("replenishmentSkus");
+    if (!Number.isFinite(countedSkusPeriod) || !Number.isFinite(replenishmentSkus) || replenishmentSkus <= 0) return NaN;
+    return (countedSkusPeriod / replenishmentSkus) * 100;
+  }
+
+  if (formulaType === "estoque_divergencias_tratadas") {
+    const treatedDivergencesOnTime = getLaunchFormulaFieldValue("treatedDivergencesOnTime");
+    const totalDivergences = getLaunchFormulaFieldValue("totalDivergences");
+    if (!Number.isFinite(treatedDivergencesOnTime) || !Number.isFinite(totalDivergences) || totalDivergences <= 0) {
+      return NaN;
+    }
+    return (treatedDivergencesOnTime / totalDivergences) * 100;
+  }
+
   if (formulaType === "slow_mover") {
     const slowMovingSkus = getLaunchFormulaFieldValue("slowMovingSkus");
     const replenishmentSkus = getLaunchFormulaFieldValue("replenishmentSkus");
@@ -1569,11 +1901,25 @@ function computeLaunchFormulaValue(formulaType) {
     return (slowMovingSkus / replenishmentSkus) * 100;
   }
 
+  if (formulaType === "estoque_slow_mover") {
+    const slowMovingSkus = getLaunchFormulaFieldValue("slowMovingSkus");
+    const totalStockSkus = getLaunchFormulaFieldValue("totalStockSkus");
+    if (!Number.isFinite(slowMovingSkus) || !Number.isFinite(totalStockSkus) || totalStockSkus <= 0) return NaN;
+    return (slowMovingSkus / totalStockSkus) * 100;
+  }
+
   if (formulaType === "produtividade_individual") {
     const completedActivities = getLaunchFormulaFieldValue("completedActivities");
     const totalAttendances = getLaunchFormulaFieldValue("totalAttendances");
     if (!Number.isFinite(completedActivities) || !Number.isFinite(totalAttendances) || totalAttendances <= 0) return NaN;
     return (completedActivities / totalAttendances) * 100;
+  }
+
+  if (formulaType === "estoque_produtividade_individual_contagens") {
+    const dailyCountedSkus = getLaunchFormulaFieldValue("dailyCountedSkus");
+    const dailySkuTarget = getLaunchFormulaFieldValue("dailySkuTarget");
+    if (!Number.isFinite(dailyCountedSkus) || !Number.isFinite(dailySkuTarget) || dailySkuTarget <= 0) return NaN;
+    return (dailyCountedSkus / dailySkuTarget) * 100;
   }
 
   if (formulaType === "tempo_recebimento") {
@@ -1714,6 +2060,18 @@ function syncLaunchFormByIndicator() {
     "wmsStock",
     "totalItemsStock",
     "obsoleteItems",
+    "dailyReceipts",
+    "plannedReceiptCapacity",
+    "onTimeSupplierDeliveries",
+    "scheduledSupplierDeliveries",
+    "completedReceiptsOnTime",
+    "totalReceipts",
+    "releaseTotalHours",
+    "releasedReceipts",
+    "readdressedMaterials",
+    "totalStoredMaterials",
+    "divergentSkus",
+    "totalSkus",
     "missingItems",
     "criticalItems",
     "zeroStockMaintenanceItems",
@@ -1721,10 +2079,15 @@ function syncLaunchFormByIndicator() {
     "itemsAboveMinimum",
     "countedSkusPeriod",
     "replenishmentSkus",
+    "treatedDivergencesOnTime",
+    "totalDivergences",
     "slowMovingSkus",
+    "totalStockSkus",
     "collaboratorName",
     "completedActivities",
     "totalAttendances",
+    "dailyCountedSkus",
+    "dailySkuTarget",
     "initialStock",
     "entriesValue",
     "outboundValue",
@@ -2451,6 +2814,54 @@ function applyAlmoxarifadoLaunchFormulaDetails(indicator, formulaType, payload) 
 function applyRecebimentoLaunchFormulaDetails(indicator, formulaType, payload) {
   if (!indicator || !payload) return;
 
+  if (formulaType === "recebimento_capacidade_diaria") {
+    if (!Number.isFinite(payload.dailyReceipts) || !Number.isFinite(payload.plannedReceiptCapacity)) return;
+    indicator.details = [
+      ["Recebimentos", formatNumber(payload.dailyReceipts)],
+      ["Capacidade planejada", formatNumber(payload.plannedReceiptCapacity)],
+    ];
+  }
+
+  if (formulaType === "recebimento_otif_fornecedores") {
+    if (!Number.isFinite(payload.onTimeSupplierDeliveries) || !Number.isFinite(payload.scheduledSupplierDeliveries)) return;
+    indicator.details = [
+      ["Entregas no prazo", formatNumber(payload.onTimeSupplierDeliveries)],
+      ["Entregas programadas", formatNumber(payload.scheduledSupplierDeliveries)],
+    ];
+  }
+
+  if (formulaType === "recebimento_eficiencia") {
+    if (!Number.isFinite(payload.completedReceiptsOnTime) || !Number.isFinite(payload.totalReceipts)) return;
+    indicator.details = [
+      ["Recebimentos no prazo", formatNumber(payload.completedReceiptsOnTime)],
+      ["Total de recebimentos", formatNumber(payload.totalReceipts)],
+    ];
+  }
+
+  if (formulaType === "recebimento_tempo_liberacao") {
+    if (!Number.isFinite(payload.releaseTotalHours) || !Number.isFinite(payload.releasedReceipts)) return;
+    indicator.details = [
+      ["Horas totais", `${formatNumber(payload.releaseTotalHours)} h`],
+      ["Recebimentos liberados", formatNumber(payload.releasedReceipts)],
+    ];
+  }
+
+  if (formulaType === "recebimento_erros_armazenagem") {
+    if (!Number.isFinite(payload.readdressedMaterials) || !Number.isFinite(payload.totalStoredMaterials)) return;
+    indicator.details = [
+      ["Materiais reendereçados", formatNumber(payload.readdressedMaterials)],
+      ["Materiais armazenados", formatNumber(payload.totalStoredMaterials)],
+    ];
+  }
+
+  if (formulaType === "recebimento_produtividade_individual") {
+    if (!Number.isFinite(payload.completedActivities) || !Number.isFinite(payload.totalAttendances)) return;
+    indicator.details = [
+      ["Colaborador", payload.collaboratorName || "-"],
+      ["Atendimentos", formatNumber(payload.totalAttendances)],
+    ];
+  }
+
   if (formulaType === "tempo_recebimento") {
     if (!Number.isFinite(payload.receivedLoads) || !Number.isFinite(payload.receiptHours)) return;
     indicator.details = [
@@ -2495,6 +2906,55 @@ function applyRecebimentoLaunchFormulaDetails(indicator, formulaType, payload) {
 function applyEstoqueLaunchFormulaDetails(indicator, formulaType, payload) {
   if (selectedDepartmentKey !== "estoque") return;
   if (!indicator || !payload) return;
+
+  if (formulaType === "estoque_acuracidade_sku") {
+    if (!Number.isFinite(payload.correctItems) || !Number.isFinite(payload.totalCountedItems)) return;
+    indicator.details = [
+      ["Itens corretos", formatNumber(payload.correctItems)],
+      ["Itens contados", formatNumber(payload.totalCountedItems)],
+    ];
+  }
+
+  if (formulaType === "estoque_divergencia_wms_sku") {
+    if (!Number.isFinite(payload.divergentSkus) || !Number.isFinite(payload.totalSkus)) return;
+    indicator.details = [
+      ["SKUs divergentes", formatNumber(payload.divergentSkus)],
+      ["Total de SKUs", formatNumber(payload.totalSkus)],
+    ];
+  }
+
+  if (formulaType === "estoque_cumprimento_plano_inventario") {
+    if (!Number.isFinite(payload.countedSkusPeriod) || !Number.isFinite(payload.replenishmentSkus)) return;
+    indicator.details = [
+      ["SKUs contados", formatNumber(payload.countedSkusPeriod)],
+      ["SKUs reposição", formatNumber(payload.replenishmentSkus)],
+    ];
+  }
+
+  if (formulaType === "estoque_divergencias_tratadas") {
+    if (!Number.isFinite(payload.treatedDivergencesOnTime) || !Number.isFinite(payload.totalDivergences)) return;
+    indicator.details = [
+      ["Divergências tratadas", formatNumber(payload.treatedDivergencesOnTime)],
+      ["Total de divergências", formatNumber(payload.totalDivergences)],
+    ];
+  }
+
+  if (formulaType === "estoque_slow_mover") {
+    if (!Number.isFinite(payload.slowMovingSkus) || !Number.isFinite(payload.totalStockSkus)) return;
+    indicator.details = [
+      ["SKUs > 90 dias", formatNumber(payload.slowMovingSkus)],
+      ["Total de SKUs", formatNumber(payload.totalStockSkus)],
+    ];
+  }
+
+  if (formulaType === "estoque_produtividade_individual_contagens") {
+    if (!Number.isFinite(payload.dailyCountedSkus) || !Number.isFinite(payload.dailySkuTarget)) return;
+    indicator.details = [
+      ["Colaborador", payload.collaboratorName || "-"],
+      ["SKUs contados", formatNumber(payload.dailyCountedSkus)],
+      ["Meta diária", `${formatNumber(payload.dailySkuTarget)} SKU/dia`],
+    ];
+  }
 
   if (formulaType === "acuracidade") {
     if (!Number.isFinite(payload.correctItems) || !Number.isFinite(payload.inventoriedItems)) return;
@@ -2604,6 +3064,43 @@ function extractFormulaPayload(formData, formulaType) {
       averageStock,
     };
   }
+  if (formulaType === "recebimento_capacidade_diaria") {
+    return {
+      dailyReceipts: parseLocalizedNumber(formData.get("dailyReceipts")),
+      plannedReceiptCapacity: parseLocalizedNumber(formData.get("plannedReceiptCapacity")),
+    };
+  }
+  if (formulaType === "recebimento_otif_fornecedores") {
+    return {
+      onTimeSupplierDeliveries: parseLocalizedNumber(formData.get("onTimeSupplierDeliveries")),
+      scheduledSupplierDeliveries: parseLocalizedNumber(formData.get("scheduledSupplierDeliveries")),
+    };
+  }
+  if (formulaType === "recebimento_eficiencia") {
+    return {
+      completedReceiptsOnTime: parseLocalizedNumber(formData.get("completedReceiptsOnTime")),
+      totalReceipts: parseLocalizedNumber(formData.get("totalReceipts")),
+    };
+  }
+  if (formulaType === "recebimento_tempo_liberacao") {
+    return {
+      releaseTotalHours: parseLocalizedNumber(formData.get("releaseTotalHours")),
+      releasedReceipts: parseLocalizedNumber(formData.get("releasedReceipts")),
+    };
+  }
+  if (formulaType === "recebimento_erros_armazenagem") {
+    return {
+      readdressedMaterials: parseLocalizedNumber(formData.get("readdressedMaterials")),
+      totalStoredMaterials: parseLocalizedNumber(formData.get("totalStoredMaterials")),
+    };
+  }
+  if (formulaType === "recebimento_produtividade_individual") {
+    return {
+      collaboratorName: repairTextEncoding(String(formData.get("collaboratorName") || "").trim()),
+      completedActivities: parseLocalizedNumber(formData.get("completedActivities")),
+      totalAttendances: parseLocalizedNumber(formData.get("totalAttendances")),
+    };
+  }
   if (formulaType === "ruptura_estocaveis") {
     return {
       zeroStockMaintenanceItems: parseLocalizedNumber(formData.get("zeroStockMaintenanceItems")),
@@ -2614,6 +3111,18 @@ function extractFormulaPayload(formData, formulaType) {
     return {
       correctItems: parseLocalizedNumber(formData.get("correctItems")),
       totalCountedItems: parseLocalizedNumber(formData.get("totalCountedItems")),
+    };
+  }
+  if (formulaType === "estoque_acuracidade_sku") {
+    return {
+      correctItems: parseLocalizedNumber(formData.get("correctItems")),
+      totalCountedItems: parseLocalizedNumber(formData.get("totalCountedItems")),
+    };
+  }
+  if (formulaType === "estoque_divergencia_wms_sku") {
+    return {
+      divergentSkus: parseLocalizedNumber(formData.get("divergentSkus")),
+      totalSkus: parseLocalizedNumber(formData.get("totalSkus")),
     };
   }
   if (formulaType === "aderencia_estoque_minimo") {
@@ -2628,10 +3137,28 @@ function extractFormulaPayload(formData, formulaType) {
       replenishmentSkus: parseLocalizedNumber(formData.get("replenishmentSkus")),
     };
   }
+  if (formulaType === "estoque_cumprimento_plano_inventario") {
+    return {
+      countedSkusPeriod: parseLocalizedNumber(formData.get("countedSkusPeriod")),
+      replenishmentSkus: parseLocalizedNumber(formData.get("replenishmentSkus")),
+    };
+  }
+  if (formulaType === "estoque_divergencias_tratadas") {
+    return {
+      treatedDivergencesOnTime: parseLocalizedNumber(formData.get("treatedDivergencesOnTime")),
+      totalDivergences: parseLocalizedNumber(formData.get("totalDivergences")),
+    };
+  }
   if (formulaType === "slow_mover") {
     return {
       slowMovingSkus: parseLocalizedNumber(formData.get("slowMovingSkus")),
       replenishmentSkus: parseLocalizedNumber(formData.get("replenishmentSkus")),
+    };
+  }
+  if (formulaType === "estoque_slow_mover") {
+    return {
+      slowMovingSkus: parseLocalizedNumber(formData.get("slowMovingSkus")),
+      totalStockSkus: parseLocalizedNumber(formData.get("totalStockSkus")),
     };
   }
   if (formulaType === "produtividade_individual") {
@@ -2639,6 +3166,13 @@ function extractFormulaPayload(formData, formulaType) {
       collaboratorName: repairTextEncoding(String(formData.get("collaboratorName") || "").trim()),
       completedActivities: parseLocalizedNumber(formData.get("completedActivities")),
       totalAttendances: parseLocalizedNumber(formData.get("totalAttendances")),
+    };
+  }
+  if (formulaType === "estoque_produtividade_individual_contagens") {
+    return {
+      collaboratorName: repairTextEncoding(String(formData.get("collaboratorName") || "").trim()),
+      dailyCountedSkus: parseLocalizedNumber(formData.get("dailyCountedSkus")),
+      dailySkuTarget: parseLocalizedNumber(formData.get("dailySkuTarget")),
     };
   }
   if (formulaType === "tempo_recebimento") {
@@ -2741,6 +3275,31 @@ function buildHistoryEntry(dateValue, numericValue, formulaType, formulaPayload,
     entry.finalStock = formulaPayload.finalStock;
     entry.averageStock = formulaPayload.averageStock;
   }
+  if (formulaType === "recebimento_capacidade_diaria") {
+    entry.dailyReceipts = formulaPayload.dailyReceipts;
+    entry.plannedReceiptCapacity = formulaPayload.plannedReceiptCapacity;
+  }
+  if (formulaType === "recebimento_otif_fornecedores") {
+    entry.onTimeSupplierDeliveries = formulaPayload.onTimeSupplierDeliveries;
+    entry.scheduledSupplierDeliveries = formulaPayload.scheduledSupplierDeliveries;
+  }
+  if (formulaType === "recebimento_eficiencia") {
+    entry.completedReceiptsOnTime = formulaPayload.completedReceiptsOnTime;
+    entry.totalReceipts = formulaPayload.totalReceipts;
+  }
+  if (formulaType === "recebimento_tempo_liberacao") {
+    entry.releaseTotalHours = formulaPayload.releaseTotalHours;
+    entry.releasedReceipts = formulaPayload.releasedReceipts;
+  }
+  if (formulaType === "recebimento_erros_armazenagem") {
+    entry.readdressedMaterials = formulaPayload.readdressedMaterials;
+    entry.totalStoredMaterials = formulaPayload.totalStoredMaterials;
+  }
+  if (formulaType === "recebimento_produtividade_individual") {
+    entry.collaboratorName = formulaPayload.collaboratorName;
+    entry.completedActivities = formulaPayload.completedActivities;
+    entry.totalAttendances = formulaPayload.totalAttendances;
+  }
   if (formulaType === "ruptura_estocaveis") {
     entry.zeroStockMaintenanceItems = formulaPayload.zeroStockMaintenanceItems;
     entry.stockableMaintenanceItems = formulaPayload.stockableMaintenanceItems;
@@ -2748,6 +3307,14 @@ function buildHistoryEntry(dateValue, numericValue, formulaType, formulaPayload,
   if (formulaType === "acuracidade_uso_consumo") {
     entry.correctItems = formulaPayload.correctItems;
     entry.totalCountedItems = formulaPayload.totalCountedItems;
+  }
+  if (formulaType === "estoque_acuracidade_sku") {
+    entry.correctItems = formulaPayload.correctItems;
+    entry.totalCountedItems = formulaPayload.totalCountedItems;
+  }
+  if (formulaType === "estoque_divergencia_wms_sku") {
+    entry.divergentSkus = formulaPayload.divergentSkus;
+    entry.totalSkus = formulaPayload.totalSkus;
   }
   if (formulaType === "aderencia_estoque_minimo") {
     entry.itemsAboveMinimum = formulaPayload.itemsAboveMinimum;
@@ -2757,14 +3324,31 @@ function buildHistoryEntry(dateValue, numericValue, formulaType, formulaPayload,
     entry.countedSkusPeriod = formulaPayload.countedSkusPeriod;
     entry.replenishmentSkus = formulaPayload.replenishmentSkus;
   }
+  if (formulaType === "estoque_cumprimento_plano_inventario") {
+    entry.countedSkusPeriod = formulaPayload.countedSkusPeriod;
+    entry.replenishmentSkus = formulaPayload.replenishmentSkus;
+  }
+  if (formulaType === "estoque_divergencias_tratadas") {
+    entry.treatedDivergencesOnTime = formulaPayload.treatedDivergencesOnTime;
+    entry.totalDivergences = formulaPayload.totalDivergences;
+  }
   if (formulaType === "slow_mover") {
     entry.slowMovingSkus = formulaPayload.slowMovingSkus;
     entry.replenishmentSkus = formulaPayload.replenishmentSkus;
+  }
+  if (formulaType === "estoque_slow_mover") {
+    entry.slowMovingSkus = formulaPayload.slowMovingSkus;
+    entry.totalStockSkus = formulaPayload.totalStockSkus;
   }
   if (formulaType === "produtividade_individual") {
     entry.collaboratorName = formulaPayload.collaboratorName;
     entry.completedActivities = formulaPayload.completedActivities;
     entry.totalAttendances = formulaPayload.totalAttendances;
+  }
+  if (formulaType === "estoque_produtividade_individual_contagens") {
+    entry.collaboratorName = formulaPayload.collaboratorName;
+    entry.dailyCountedSkus = formulaPayload.dailyCountedSkus;
+    entry.dailySkuTarget = formulaPayload.dailySkuTarget;
   }
   if (formulaType === "tempo_recebimento") {
     entry.receivedLoads = formulaPayload.receivedLoads;
