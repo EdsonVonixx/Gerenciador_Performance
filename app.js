@@ -1,6 +1,7 @@
 ﻿const operationalDepartmentKeys = ["almoxarifado", "recebimento", "estoque", "secos", "quimicas"];
 
 const actionExtraIndicatorName = "5S Operacional";
+const actionExtraIndicatorDepartments = new Set(["almoxarifado", "estoque"]);
 
 const accessProfiles = [
   {
@@ -2380,9 +2381,7 @@ function renderNavigation() {
   const consolidatedManagementViews = ["tv", "treatments"];
   qsa(".management-only").forEach((item) => item.classList.toggle("hidden", !isManagement()));
   qsa(".operational-only").forEach((item) => item.classList.toggle("hidden", isManagement()));
-  qsa(".chemical-only").forEach((item) =>
-    item.classList.toggle("hidden", isManagement() || currentUser?.departmentKey !== "quimicas"),
-  );
+  qsa(".chemical-only").forEach((item) => item.classList.add("hidden"));
   const topbarActions = qs(".topbar-actions");
   if (topbarActions) {
     const hideTopbarActions = currentView === "treatments" || currentView === "fiveS";
@@ -2426,9 +2425,9 @@ function renderIndicatorOptions() {
     .map((name) => `<option>${escapeHtml(name)}</option>`)
     .join("");
   const actionIndicatorNames =
-    selectedDepartmentKey === "recebimento"
-      ? departmentIndicatorNames
-      : [...departmentIndicatorNames, actionExtraIndicatorName];
+    actionExtraIndicatorDepartments.has(selectedDepartmentKey)
+      ? [...departmentIndicatorNames, actionExtraIndicatorName]
+      : departmentIndicatorNames;
   const actionOptions = uniqueIndicatorNames(actionIndicatorNames)
     .map((name) => `<option>${escapeHtml(name)}</option>`)
     .join("");
@@ -4527,7 +4526,7 @@ function setSidebarOpen(nextOpen) {
 function setView(view) {
   if (!currentUser) return;
   if (!isManagement() && (view === "tv" || view === "treatments")) return;
-  if (view === "fiveS" && (isManagement() || currentUser.departmentKey !== "quimicas")) return;
+  if (view === "fiveS") return;
   if (isManagement() && (view === "launches" || view === "actions")) view = "dashboard";
 
   currentView = view;
