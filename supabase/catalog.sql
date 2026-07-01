@@ -50,7 +50,7 @@ from (
     ('recebimento', 'Capacidade de Recebimento Diário', '%', 85, 'higher', 'Meta', 'recebimento_capacidade_diaria', 1),
     ('recebimento', 'OTIF de Recebimento de Fornecedores x Follow Up', '%', 95, 'higher', 'Meta', 'recebimento_otif_fornecedores', 2),
     ('recebimento', 'Eficiência de Recebimento', '%', 95, 'higher', 'Meta', 'recebimento_eficiencia', 3),
-    ('recebimento', 'Tempo Médio de Liberação do Material', 'h', 8, 'lower', 'Até', 'recebimento_tempo_liberacao', 4),
+    ('recebimento', 'Tempo Médio de Recebimento', 'min', 50, 'lower', 'Até', 'recebimento_tempo_liberacao', 4),
     ('recebimento', 'Erros de Armazenagem e Movimentação', '%', 3, 'lower', 'Meta', 'recebimento_erros_armazenagem', 5),
     ('recebimento', 'Produtividade Individual', '%', null, 'tracking', 'Acompanhamento', 'recebimento_produtividade_individual', 6),
 
@@ -66,7 +66,7 @@ from (
     ('secos', 'Índice de OPs Atendidas Erradas', '%', 0.3, 'lower', 'Meta', 'secos_ops_atendidas_erradas', 3),
     ('secos', 'Índice de Erros de Movimentação', '%', 0.5, 'lower', 'Meta', 'secos_erros_movimentacao', 4),
     ('secos', 'Erros Expedição Fábrica (Produto Acabado)', 'R$', 0, 'lower', 'Meta', 'secos_erros_expedicao_fabrica', 5),
-    ('secos', 'Tempo Médio Carregamento Carretas', 'min', 60, 'lower', 'Meta', 'secos_tempo_carregamento_carretas', 6),
+    ('secos', 'Tempo Médio Carregamento Carretas', 'min', 80, 'lower', 'Meta', 'secos_tempo_carregamento_carretas', 6),
     ('secos', 'Produtividade Individual', 'atividades/colab', null, 'tracking', 'Acompanhamento', 'secos_produtividade_individual', 7),
 
     ('quimicas', 'Confiabilidade do Abastecimento da Produção', '%', 90, 'higher', 'Meta', 'quimica_confiabilidade_abastecimento', 1),

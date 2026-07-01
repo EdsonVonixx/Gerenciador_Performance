@@ -127,7 +127,7 @@ const departments = {
       { name: "Capacidade de Recebimento Diário", unit: "%", target: 85, goal: "higher", targetLabel: "Meta" },
       { name: "OTIF de Recebimento de Fornecedores x Follow Up", unit: "%", target: 95, goal: "higher", targetLabel: "Meta" },
       { name: "Eficiência de Recebimento", unit: "%", target: 95, goal: "higher", targetLabel: "Meta" },
-      { name: "Tempo Médio de Liberação do Material", unit: "h", target: 8, goal: "lower", targetLabel: "Até" },
+      { name: "Tempo Médio de Recebimento", unit: "min", target: 50, goal: "lower", targetLabel: "Até" },
       { name: "Erros de Armazenagem e Movimentação", unit: "%", target: 3, goal: "lower", targetLabel: "Meta" },
       { name: "Produtividade Individual", unit: "%", target: null, goal: "tracking", statusText: "Acompanhamento" },
     ],
@@ -163,7 +163,7 @@ const departments = {
       { name: "Índice de OPs Atendidas Erradas", unit: "%", target: 0.3, goal: "lower", targetLabel: "Meta" },
       { name: "Índice de Erros de Movimentação", unit: "%", target: 0.5, goal: "lower", targetLabel: "Meta" },
       { name: "Erros Expedição Fábrica (Produto Acabado)", unit: "R$", target: 0, goal: "lower", targetLabel: "Meta" },
-      { name: "Tempo Médio Carregamento Carretas", unit: "min", target: 60, goal: "lower", targetLabel: "Meta" },
+      { name: "Tempo Médio Carregamento Carretas", unit: "min", target: 80, goal: "lower", targetLabel: "Meta" },
       { name: "Produtividade Individual", unit: "atividades/colab", target: null, goal: "tracking", statusText: "Acompanhamento" },
     ],
     launches: [],
@@ -666,7 +666,23 @@ async function supabaseRestRequest(table, options = {}) {
 }
 
 function getIndicatorByName(departmentKey, indicatorName) {
-  return departments[departmentKey]?.indicators.find((indicator) => indicator.name === indicatorName) || null;
+  const department = departments[departmentKey];
+  if (!department || !indicatorName) return null;
+
+  const normalizedName = normalizeTextKey(indicatorName);
+  const directMatch = department.indicators.find(
+    (indicator) => indicator.name === indicatorName || normalizeTextKey(indicator.name) === normalizedName,
+  );
+  if (directMatch) return directMatch;
+
+  const canonicalNameByAlias = {
+    recebimento: {
+      "tempo medio de liberacao do material": "Tempo Médio de Recebimento",
+    },
+  };
+  const canonicalName = canonicalNameByAlias[departmentKey]?.[normalizedName];
+  if (!canonicalName) return null;
+  return department.indicators.find((indicator) => indicator.name === canonicalName) || null;
 }
 
 function encodeSupabaseFilterValue(value) {
@@ -681,7 +697,7 @@ function launchToSupabaseRow(launch, departmentKey = selectedDepartmentKey) {
   return {
     id: launch.id,
     department_slug: departmentKey,
-    indicator_name: launch.indicator,
+    indicator_name: indicator?.name || launch.indicator,
     record_date: launch.date,
     shift: normalizeLaunchShift(launch.shift),
     value: numericValue,
@@ -694,9 +710,10 @@ function launchToSupabaseRow(launch, departmentKey = selectedDepartmentKey) {
 
 function supabaseRowToLaunch(row) {
   const numericValue = Number(row.value);
+  const indicator = getIndicatorByName(row.department_slug, row.indicator_name);
   return {
     id: row.id,
-    indicator: row.indicator_name,
+    indicator: indicator?.name || row.indicator_name,
     value: Number.isFinite(numericValue) ? numericValue : row.value,
     numericValue,
     shift: normalizeLaunchShift(row.shift),
@@ -707,10 +724,11 @@ function supabaseRowToLaunch(row) {
 }
 
 function actionRecordToSupabaseRow(record, departmentKey = selectedDepartmentKey) {
+  const indicator = getIndicatorByName(departmentKey, record.indicator);
   return {
     id: record.id,
     department_slug: departmentKey,
-    indicator_name: record.indicator,
+    indicator_name: indicator?.name || record.indicator,
     type: record.type,
     status: normalizeRecordStatusLabel(record.status),
     owner: record.owner || "",
@@ -722,10 +740,11 @@ function actionRecordToSupabaseRow(record, departmentKey = selectedDepartmentKey
 }
 
 function supabaseRowToActionRecord(row) {
+  const indicator = getIndicatorByName(row.department_slug, row.indicator_name);
   return {
     id: row.id,
     type: row.type,
-    indicator: row.indicator_name,
+    indicator: indicator?.name || row.indicator_name,
     owner: row.owner || "",
     dueDate: row.due_date || "",
     recordDate: row.record_date,
@@ -1161,6 +1180,7 @@ function shouldDisplayWithoutDecimalsInChart(indicator) {
   const key = normalizeTextKey(indicator?.name);
   return (
     key === "tempo de recebimento" ||
+    key === "tempo medio de recebimento" ||
     key === "tempo medio de liberacao do material" ||
     key === "tempo medio carregamento carretas" ||
     key === "produtividade de contagens" ||
@@ -1245,12 +1265,16 @@ function getCardDetails(indicator) {
     }
   }
 
-  if (indicatorKey.includes("tempo") && indicatorKey.includes("liberacao") && indicatorKey.includes("material")) {
+  if (
+    indicatorKey.includes("tempo") &&
+    ((indicatorKey.includes("recebimento") && selectedDepartmentKey === "recebimento") ||
+      (indicatorKey.includes("liberacao") && indicatorKey.includes("material")))
+  ) {
     const rows = rowsWithFields(["releaseTotalHours", "releasedReceipts"]);
     if (rows.length > 0) {
       return [
         ["Horas totais", `${formatNumber(sumField(rows, "releaseTotalHours"))} h`],
-        ["Recebimentos liberados", formatNumber(sumField(rows, "releasedReceipts"))],
+        ["Total de recebimentos", formatNumber(sumField(rows, "releasedReceipts"))],
       ];
     }
   }
@@ -2046,7 +2070,11 @@ function getLaunchFormulaType(indicatorName) {
     if (key.includes("eficiencia") && key.includes("recebimento")) {
       return "recebimento_eficiencia";
     }
-    if (key.includes("tempo") && key.includes("liberacao") && key.includes("material")) {
+    if (
+      key.includes("tempo") &&
+      ((key.includes("recebimento") && selectedDepartmentKey === "recebimento") ||
+        (key.includes("liberacao") && key.includes("material")))
+    ) {
       return "recebimento_tempo_liberacao";
     }
     if (key.includes("erros") && key.includes("armazenagem") && key.includes("movimentacao")) {
@@ -2226,11 +2254,11 @@ launchFormulaDefinitions.recebimento_eficiencia = {
 };
 
 launchFormulaDefinitions.recebimento_tempo_liberacao = {
-  title: "Cálculo de Tempo Médio de Liberação do Material",
-  hint: "Tempo médio (h) = Soma do tempo de liberação / Total de recebimentos liberados.",
+  title: "Cálculo de Tempo Médio de Recebimento",
+  hint: "Tempo médio (min) = (Soma do tempo de liberação / Total de recebimentos) x 100.",
   fields: ["releaseTotalHours", "releasedReceipts"],
   allowNegative: false,
-  resultSuffix: " h",
+  resultSuffix: " min",
 };
 
 launchFormulaDefinitions.recebimento_erros_armazenagem = {
@@ -2593,7 +2621,7 @@ function computeLaunchFormulaValue(formulaType) {
     const releaseTotalHours = getLaunchFormulaFieldValue("releaseTotalHours");
     const releasedReceipts = getLaunchFormulaFieldValue("releasedReceipts");
     if (!Number.isFinite(releaseTotalHours) || !Number.isFinite(releasedReceipts) || releasedReceipts <= 0) return NaN;
-    return releaseTotalHours / releasedReceipts;
+    return (releaseTotalHours / releasedReceipts) * 100;
   }
 
   if (formulaType === "recebimento_erros_armazenagem") {
@@ -3742,7 +3770,7 @@ function applyRecebimentoLaunchFormulaDetails(indicator, formulaType, payload) {
     if (!Number.isFinite(payload.releaseTotalHours) || !Number.isFinite(payload.releasedReceipts)) return;
     indicator.details = [
       ["Horas totais", `${formatNumber(payload.releaseTotalHours)} h`],
-      ["Recebimentos liberados", formatNumber(payload.releasedReceipts)],
+      ["Total de recebimentos", formatNumber(payload.releasedReceipts)],
     ];
   }
 
