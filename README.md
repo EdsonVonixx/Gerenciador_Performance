@@ -73,7 +73,18 @@ VITE_SUPABASE_ANON_KEY=
 VITE_VPC_AUTH_EMAIL_SUFFIX=vpc.vonixx.local
 ```
 
+Este repositório já inclui `.env.production` com a URL pública e a chave publishable do projeto Supabase `Indicadores Operacionais`, permitindo que a build de produção rode conectada ao banco sem expor chaves secretas.
+
 O VPC usa tabelas prefixadas com `vpc_` e nao grava registros excluidos como soft delete. Ao excluir lancamentos ou tratativas em producao, a aplicacao executa `DELETE` real na base SQL.
+
+Usuários operacionais criados no Supabase Auth:
+
+- Almoxarifado U&C: `UC1`
+- Recebimento e Armazenagem: `RA2`
+- Estoque e Inventário: `EI3`
+- Operação Secos e Expedição: `OS4`
+- Separação Química: `OQ5`
+- Gestão: `GE6`
 
 ## Observacoes importantes
 

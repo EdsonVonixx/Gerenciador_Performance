@@ -66,6 +66,12 @@ create index if not exists vpc_launches_department_date_idx
 create index if not exists vpc_launches_indicator_date_idx
   on public.vpc_launches (department_slug, indicator_name, record_date desc);
 
+create index if not exists vpc_launches_created_by_idx
+  on public.vpc_launches (created_by);
+
+create index if not exists vpc_launches_updated_by_idx
+  on public.vpc_launches (updated_by);
+
 create table if not exists public.vpc_action_records (
   id text primary key,
   department_slug text not null references public.vpc_departments(slug) on delete cascade,
@@ -89,6 +95,12 @@ create index if not exists vpc_action_records_department_date_idx
 create index if not exists vpc_action_records_status_idx
   on public.vpc_action_records (status);
 
+create index if not exists vpc_action_records_created_by_idx
+  on public.vpc_action_records (created_by);
+
+create index if not exists vpc_action_records_updated_by_idx
+  on public.vpc_action_records (updated_by);
+
 create table if not exists public.vpc_five_s_audits (
   id text primary key,
   department_slug text not null references public.vpc_departments(slug) on delete cascade,
@@ -101,6 +113,15 @@ create table if not exists public.vpc_five_s_audits (
   updated_at timestamptz not null default now(),
   unique (department_slug, audit_date)
 );
+
+create index if not exists vpc_profiles_department_slug_idx
+  on public.vpc_profiles (department_slug);
+
+create index if not exists vpc_five_s_audits_created_by_idx
+  on public.vpc_five_s_audits (created_by);
+
+create index if not exists vpc_five_s_audits_updated_by_idx
+  on public.vpc_five_s_audits (updated_by);
 
 alter table public.vpc_departments enable row level security;
 alter table public.vpc_profiles enable row level security;
@@ -169,9 +190,28 @@ create policy "vpc launches select by department or management"
   );
 
 drop policy if exists "vpc launches write by department or management" on public.vpc_launches;
-create policy "vpc launches write by department or management"
+drop policy if exists "vpc launches insert by department or management" on public.vpc_launches;
+create policy "vpc launches insert by department or management"
   on public.vpc_launches
-  for all
+  for insert
+  to authenticated
+  with check (
+    exists (
+      select 1
+      from public.vpc_profiles profile
+      where profile.user_id = (select auth.uid())
+        and profile.active
+        and (
+          profile.role = 'gestao'
+          or profile.department_slug = vpc_launches.department_slug
+        )
+    )
+  );
+
+drop policy if exists "vpc launches update by department or management" on public.vpc_launches;
+create policy "vpc launches update by department or management"
+  on public.vpc_launches
+  for update
   to authenticated
   using (
     exists (
@@ -186,6 +226,24 @@ create policy "vpc launches write by department or management"
     )
   )
   with check (
+    exists (
+      select 1
+      from public.vpc_profiles profile
+      where profile.user_id = (select auth.uid())
+        and profile.active
+        and (
+          profile.role = 'gestao'
+          or profile.department_slug = vpc_launches.department_slug
+        )
+    )
+  );
+
+drop policy if exists "vpc launches delete by department or management" on public.vpc_launches;
+create policy "vpc launches delete by department or management"
+  on public.vpc_launches
+  for delete
+  to authenticated
+  using (
     exists (
       select 1
       from public.vpc_profiles profile
@@ -217,9 +275,28 @@ create policy "vpc action records select by department or management"
   );
 
 drop policy if exists "vpc action records write by department or management" on public.vpc_action_records;
-create policy "vpc action records write by department or management"
+drop policy if exists "vpc action records insert by department or management" on public.vpc_action_records;
+create policy "vpc action records insert by department or management"
   on public.vpc_action_records
-  for all
+  for insert
+  to authenticated
+  with check (
+    exists (
+      select 1
+      from public.vpc_profiles profile
+      where profile.user_id = (select auth.uid())
+        and profile.active
+        and (
+          profile.role = 'gestao'
+          or profile.department_slug = vpc_action_records.department_slug
+        )
+    )
+  );
+
+drop policy if exists "vpc action records update by department or management" on public.vpc_action_records;
+create policy "vpc action records update by department or management"
+  on public.vpc_action_records
+  for update
   to authenticated
   using (
     exists (
@@ -234,6 +311,24 @@ create policy "vpc action records write by department or management"
     )
   )
   with check (
+    exists (
+      select 1
+      from public.vpc_profiles profile
+      where profile.user_id = (select auth.uid())
+        and profile.active
+        and (
+          profile.role = 'gestao'
+          or profile.department_slug = vpc_action_records.department_slug
+        )
+    )
+  );
+
+drop policy if exists "vpc action records delete by department or management" on public.vpc_action_records;
+create policy "vpc action records delete by department or management"
+  on public.vpc_action_records
+  for delete
+  to authenticated
+  using (
     exists (
       select 1
       from public.vpc_profiles profile
@@ -265,9 +360,28 @@ create policy "vpc five s audits select by department or management"
   );
 
 drop policy if exists "vpc five s audits write by department or management" on public.vpc_five_s_audits;
-create policy "vpc five s audits write by department or management"
+drop policy if exists "vpc five s audits insert by department or management" on public.vpc_five_s_audits;
+create policy "vpc five s audits insert by department or management"
   on public.vpc_five_s_audits
-  for all
+  for insert
+  to authenticated
+  with check (
+    exists (
+      select 1
+      from public.vpc_profiles profile
+      where profile.user_id = (select auth.uid())
+        and profile.active
+        and (
+          profile.role = 'gestao'
+          or profile.department_slug = vpc_five_s_audits.department_slug
+        )
+    )
+  );
+
+drop policy if exists "vpc five s audits update by department or management" on public.vpc_five_s_audits;
+create policy "vpc five s audits update by department or management"
+  on public.vpc_five_s_audits
+  for update
   to authenticated
   using (
     exists (
@@ -282,6 +396,24 @@ create policy "vpc five s audits write by department or management"
     )
   )
   with check (
+    exists (
+      select 1
+      from public.vpc_profiles profile
+      where profile.user_id = (select auth.uid())
+        and profile.active
+        and (
+          profile.role = 'gestao'
+          or profile.department_slug = vpc_five_s_audits.department_slug
+        )
+    )
+  );
+
+drop policy if exists "vpc five s audits delete by department or management" on public.vpc_five_s_audits;
+create policy "vpc five s audits delete by department or management"
+  on public.vpc_five_s_audits
+  for delete
+  to authenticated
+  using (
     exists (
       select 1
       from public.vpc_profiles profile
