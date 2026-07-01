@@ -123,6 +123,31 @@ create index if not exists vpc_five_s_audits_created_by_idx
 create index if not exists vpc_five_s_audits_updated_by_idx
   on public.vpc_five_s_audits (updated_by);
 
+alter table public.vpc_launches replica identity full;
+alter table public.vpc_action_records replica identity full;
+alter table public.vpc_five_s_audits replica identity full;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.vpc_launches;
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.vpc_action_records;
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.vpc_five_s_audits;
+exception
+  when duplicate_object then null;
+end $$;
+
 alter table public.vpc_departments enable row level security;
 alter table public.vpc_profiles enable row level security;
 alter table public.vpc_indicators enable row level security;

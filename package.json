@@ -4,11 +4,14 @@
   "private": true,
   "description": "MVP frontend do Vonixx Performance Center para indicadores operacionais da Logistica.",
   "type": "module",
-  "packageManager": "npm@10",
+  "packageManager": "pnpm@11.7.0",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 4173",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.110.0"
   },
   "devDependencies": {
     "vite": "^7.2.7"

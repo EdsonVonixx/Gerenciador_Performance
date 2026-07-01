@@ -1,4 +1,6 @@
-﻿const operationalDepartmentKeys = ["almoxarifado", "recebimento", "estoque", "secos", "quimicas"];
+﻿import { createClient } from "@supabase/supabase-js";
+
+const operationalDepartmentKeys = ["almoxarifado", "recebimento", "estoque", "secos", "quimicas"];
 
 function readViteEnv(name) {
   return String(import.meta.env?.[name] || "").trim();
@@ -14,6 +16,28 @@ const vpcSupabaseConfig = {
 let vpcSupabaseSession = null;
 const useSupabasePersistence =
   vpcSupabaseConfig.dataMode === "supabase" && Boolean(vpcSupabaseConfig.url && vpcSupabaseConfig.anonKey);
+const vpcSupabaseClient = useSupabasePersistence
+  ? createClient(vpcSupabaseConfig.url, vpcSupabaseConfig.anonKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+      realtime: {
+        params: {
+          eventsPerSecond: 10,
+        },
+      },
+    })
+  : null;
+const supabaseRealtimeTables = ["vpc_launches", "vpc_action_records", "vpc_five_s_audits"];
+const supabaseRealtimeRefreshDelayMs = 350;
+const supabasePollingFallbackMs = 15000;
+let vpcSupabaseRealtimeChannel = null;
+let vpcSupabaseRefreshTimer = null;
+let vpcSupabasePollingTimer = null;
+let vpcSupabaseSessionRefreshTimer = null;
+let supabaseStateReloadInFlight = false;
+let supabaseStateReloadQueued = false;
 
 const actionExtraIndicatorName = "5S Operacional";
 const actionExtraIndicatorDepartments = new Set(["almoxarifado", "estoque"]);
@@ -519,6 +543,45 @@ function remotePersistenceActive() {
   return useSupabasePersistence && Boolean(vpcSupabaseSession?.access_token);
 }
 
+function updateSupabaseRealtimeAuth() {
+  if (!vpcSupabaseClient || !vpcSupabaseSession?.access_token) return;
+  vpcSupabaseClient.realtime.setAuth(vpcSupabaseSession.access_token);
+}
+
+function clearSupabaseSessionRefreshTimer() {
+  if (vpcSupabaseSessionRefreshTimer) {
+    window.clearTimeout(vpcSupabaseSessionRefreshTimer);
+    vpcSupabaseSessionRefreshTimer = null;
+  }
+}
+
+function scheduleSupabaseSessionRefresh() {
+  clearSupabaseSessionRefreshTimer();
+  if (!remotePersistenceActive() || !vpcSupabaseSession?.refresh_token) return;
+
+  const expiresAtMs = Number(vpcSupabaseSession.expires_at)
+    ? Number(vpcSupabaseSession.expires_at) * 1000
+    : Date.now() + Number(vpcSupabaseSession.expires_in || 3600) * 1000;
+  const refreshDelayMs = Math.max(60000, expiresAtMs - Date.now() - 120000);
+
+  vpcSupabaseSessionRefreshTimer = window.setTimeout(async () => {
+    try {
+      const refreshedSession = await supabaseAuthRequest("token?grant_type=refresh_token", {
+        method: "POST",
+        body: JSON.stringify({
+          refresh_token: vpcSupabaseSession.refresh_token,
+        }),
+      });
+      vpcSupabaseSession = refreshedSession;
+      updateSupabaseRealtimeAuth();
+      scheduleSupabaseSessionRefresh();
+    } catch (error) {
+      console.warn("Não foi possível renovar a sessão Supabase.", error);
+      scheduleSupabaseSessionRefresh();
+    }
+  }, refreshDelayMs);
+}
+
 function getSupabaseAuthEmail(profile) {
   return `${profile.key}@${vpcSupabaseConfig.authEmailSuffix}`;
 }
@@ -553,11 +616,15 @@ async function signInSupabaseProfile(profile, password) {
       password,
     }),
   });
+  updateSupabaseRealtimeAuth();
+  scheduleSupabaseSessionRefresh();
 
   return vpcSupabaseSession;
 }
 
 function signOutSupabaseProfile() {
+  stopSupabaseRealtimeSync();
+  clearSupabaseSessionRefreshTimer();
   vpcSupabaseSession = null;
 }
 
@@ -668,6 +735,37 @@ function supabaseRowToActionRecord(row) {
   };
 }
 
+function fiveSAuditRecordToSupabaseRow(record, departmentKey = selectedDepartmentKey) {
+  return {
+    id: record.id,
+    department_slug: departmentKey,
+    audit_date: record.date,
+    score: Number.isFinite(record.score) ? record.score : null,
+    payload: {
+      ...record,
+      checklistEntries: clonePlain(fiveSChecklistEntries),
+    },
+  };
+}
+
+function supabaseRowToFiveSAuditRecord(row) {
+  const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+  const score = Number(row.score);
+  return {
+    id: payload.id || row.id,
+    date: payload.date || row.audit_date,
+    score: Number.isFinite(score) ? score : Number(payload.score) || 0,
+    tone: payload.tone || "warning",
+    status: payload.status || "",
+    answered: Number(payload.answered) || 0,
+    total: Number(payload.total) || fiveSChecklistEntries.length,
+    criticalFailures: Number(payload.criticalFailures) || 0,
+    openActions: Number(payload.openActions) || 0,
+    focus: payload.focus || "-",
+    createdAt: payload.createdAt || row.created_at || new Date().toISOString(),
+  };
+}
+
 function resetRemoteDepartmentState(departmentKey) {
   const department = departments[departmentKey];
   if (!department) return;
@@ -728,7 +826,7 @@ function rebuildIndicatorsFromLaunches(departmentKey) {
 async function loadSupabaseState() {
   if (!remotePersistenceActive()) return false;
 
-  const [launchRows, actionRows] = await Promise.all([
+  const [launchRows, actionRows, fiveSRows] = await Promise.all([
     supabaseRestRequest(
       "vpc_launches",
       { query: "?select=*&order=record_date.desc,created_at.desc" },
@@ -736,6 +834,10 @@ async function loadSupabaseState() {
     supabaseRestRequest(
       "vpc_action_records",
       { query: "?select=*&order=record_date.desc,created_at.desc" },
+    ),
+    supabaseRestRequest(
+      "vpc_five_s_audits",
+      { query: "?select=*&order=audit_date.desc,created_at.desc&limit=12" },
     ),
   ]);
 
@@ -754,10 +856,98 @@ async function loadSupabaseState() {
   });
 
   operationalDepartmentKeys.forEach((departmentKey) => rebuildIndicatorsFromLaunches(departmentKey));
+  fiveSAuditRecords = (fiveSRows || []).map((row) => supabaseRowToFiveSAuditRecord(row));
+  ensureFiveSAuditRecordsMetadata();
   ensureLaunchIds();
   ensureRecordMetadata();
   syncIdCountersFromState();
   return true;
+}
+
+async function refreshSupabaseStateFromRemote(options = {}) {
+  if (!currentUser || !remotePersistenceActive()) return false;
+
+  if (supabaseStateReloadInFlight) {
+    supabaseStateReloadQueued = true;
+    return false;
+  }
+
+  supabaseStateReloadInFlight = true;
+  try {
+    await loadSupabaseState();
+    writePrototypeState();
+    renderAll();
+    return true;
+  } catch (error) {
+    console.warn("Não foi possível sincronizar a base SQL.", error);
+    if (options.showToast) showToast("Falha ao sincronizar a base SQL.");
+    return false;
+  } finally {
+    supabaseStateReloadInFlight = false;
+    if (supabaseStateReloadQueued) {
+      supabaseStateReloadQueued = false;
+      scheduleSupabaseRealtimeRefresh("queued");
+    }
+  }
+}
+
+function scheduleSupabaseRealtimeRefresh(reason = "realtime") {
+  if (!currentUser || !remotePersistenceActive()) return;
+
+  if (vpcSupabaseRefreshTimer) {
+    window.clearTimeout(vpcSupabaseRefreshTimer);
+  }
+
+  vpcSupabaseRefreshTimer = window.setTimeout(() => {
+    vpcSupabaseRefreshTimer = null;
+    refreshSupabaseStateFromRemote({ reason });
+  }, supabaseRealtimeRefreshDelayMs);
+}
+
+function stopSupabaseRealtimeSync() {
+  if (vpcSupabaseRefreshTimer) {
+    window.clearTimeout(vpcSupabaseRefreshTimer);
+    vpcSupabaseRefreshTimer = null;
+  }
+
+  if (vpcSupabasePollingTimer) {
+    window.clearInterval(vpcSupabasePollingTimer);
+    vpcSupabasePollingTimer = null;
+  }
+
+  if (vpcSupabaseClient && vpcSupabaseRealtimeChannel) {
+    vpcSupabaseClient.removeChannel(vpcSupabaseRealtimeChannel);
+  }
+  vpcSupabaseRealtimeChannel = null;
+}
+
+function startSupabaseRealtimeSync() {
+  stopSupabaseRealtimeSync();
+  if (!vpcSupabaseClient || !remotePersistenceActive()) return;
+
+  updateSupabaseRealtimeAuth();
+  let channel = vpcSupabaseClient.channel(`vpc-operational-sync-${currentUser?.key || "user"}`);
+  supabaseRealtimeTables.forEach((table) => {
+    channel = channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table,
+      },
+      () => scheduleSupabaseRealtimeRefresh(`realtime:${table}`),
+    );
+  });
+
+  vpcSupabaseRealtimeChannel = channel.subscribe((status, error) => {
+    if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+      console.warn("Canal Realtime indisponível, mantendo polling reserva.", error);
+    }
+  });
+
+  vpcSupabasePollingTimer = window.setInterval(() => {
+    refreshSupabaseStateFromRemote({ reason: "polling" });
+  }, supabasePollingFallbackMs);
 }
 
 async function persistSupabaseLaunch(launch, departmentKey = selectedDepartmentKey) {
@@ -807,6 +997,16 @@ async function deleteSupabaseActionRecord(recordId) {
     method: "DELETE",
     query: `?id=eq.${encodeSupabaseFilterValue(recordId)}`,
     prefer: "return=minimal",
+  });
+  return true;
+}
+
+async function persistSupabaseFiveSAuditRecord(record, departmentKey = selectedDepartmentKey) {
+  if (!remotePersistenceActive()) return false;
+  await supabaseRestRequest("vpc_five_s_audits?on_conflict=department_slug,audit_date", {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=minimal",
+    body: fiveSAuditRecordToSupabaseRow(record, departmentKey),
   });
   return true;
 }
@@ -4844,7 +5044,7 @@ function getFiveSAuditSnapshot() {
   };
 }
 
-function saveFiveSAuditRecord() {
+async function saveFiveSAuditRecord() {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fiveSAuditDate)) {
     showToast("Informe a data da auditoria.");
     return;
@@ -4856,7 +5056,7 @@ function saveFiveSAuditRecord() {
     return;
   }
   const record = {
-    id: `5s-audit-${fiveSAuditDate}`,
+    id: `5s-audit-${selectedDepartmentKey}-${fiveSAuditDate}`,
     date: fiveSAuditDate,
     score: snapshot.score,
     tone: snapshot.overallTone,
@@ -4868,6 +5068,15 @@ function saveFiveSAuditRecord() {
     focus: snapshot.criticalSense?.label || "-",
     createdAt: new Date().toISOString(),
   };
+
+  try {
+    await persistSupabaseFiveSAuditRecord(record, selectedDepartmentKey);
+  } catch (error) {
+    console.error("Não foi possível salvar a auditoria 5S no Supabase.", error);
+    showToast("Falha ao salvar a auditoria na base SQL.");
+    return;
+  }
+
   const existingIndex = fiveSAuditRecords.findIndex((item) => item.date === fiveSAuditDate);
 
   if (existingIndex >= 0) {
@@ -5244,6 +5453,7 @@ function setupLogin() {
     if (remotePersistenceActive()) {
       try {
         await loadSupabaseState();
+        startSupabaseRealtimeSync();
       } catch (error) {
         console.error("Não foi possível carregar a base SQL.", error);
         signOutSupabaseProfile();
@@ -5312,11 +5522,8 @@ function setupInteractions() {
 
   qs("#refreshButton").addEventListener("click", async () => {
     if (remotePersistenceActive()) {
-      try {
-        await loadSupabaseState();
-      } catch (error) {
-        console.error("Não foi possível atualizar a base SQL.", error);
-        showToast("Falha ao atualizar a base SQL.");
+      const refreshed = await refreshSupabaseStateFromRemote({ reason: "manual", showToast: true });
+      if (!refreshed) {
         return;
       }
     }
