@@ -1,8 +1,9 @@
 -- Cadastros-base do Vonixx Performance Center.
 -- Execute depois de `supabase/schema.sql`.
--- Contem somente departamentos e indicadores reais do MVP, sem lancamentos de teste.
+-- Contém somente departamentos e indicadores reais do MVP, sem lançamentos de teste.
+-- Usa tabelas `vpc_` para não interferir em projetos já existentes na mesma base.
 
-insert into public.departments (slug, name, color)
+insert into public.vpc_departments (slug, name, color)
 values
   ('almoxarifado', 'Almoxarifado U&C', '#1d6b57'),
   ('recebimento', 'Recebimento e Armazenagem', '#2f68a7'),
@@ -16,12 +17,9 @@ set
   active = true,
   updated_at = now();
 
-with department_map as (
-  select id, slug
-  from public.departments
-)
-insert into public.indicators (
-  department_id,
+insert into public.vpc_indicators (
+  id,
+  department_slug,
   name,
   unit,
   target,
@@ -30,7 +28,16 @@ insert into public.indicators (
   formula_type,
   position
 )
-select department_map.id, catalog.name, catalog.unit, catalog.target, catalog.goal, catalog.target_label, catalog.formula_type, catalog.position
+select
+  concat(catalog.slug, ':', catalog.formula_type),
+  catalog.slug,
+  catalog.name,
+  catalog.unit,
+  catalog.target,
+  catalog.goal,
+  catalog.target_label,
+  catalog.formula_type,
+  catalog.position
 from (
   values
     ('almoxarifado', 'Ruptura de Material de Estocáveis (Manutenção)', '%', 5, 'lower', 'Meta', 'ruptura_estocaveis', 1),
@@ -69,8 +76,7 @@ from (
     ('quimicas', 'Produtividade de OPs Separadas', '%', 100, 'higher', 'Meta', 'quimica_produtividade_ops_separadas', 5),
     ('quimicas', 'Produtividade Individual', 'atividades/colab', null, 'tracking', 'Acompanhamento', 'quimica_produtividade_individual', 6)
 ) as catalog(slug, name, unit, target, goal, target_label, formula_type, position)
-join department_map on department_map.slug = catalog.slug
-on conflict (department_id, name) do update
+on conflict (department_slug, name) do update
 set
   unit = excluded.unit,
   target = excluded.target,

@@ -10,9 +10,10 @@ MVP frontend do Vonixx Performance Center (VPC) para acompanhamento de indicador
 - Lancamentos manuais com calculos automaticos.
 - Evidencias, justificativas e planos de acao.
 - Modulo TV para visualizacao consolidada.
-- Checklist 5S operacional para Operacoes Quimicas.
-- Persistencia temporaria em `localStorage`.
-- Estrutura inicial de Supabase em `supabase/schema.sql`.
+- Checklist 5S operacional preparado para evolucao.
+- Persistencia local em `localStorage` quando `VITE_VPC_DATA_MODE=local`.
+- Persistencia SQL no Supabase quando `VITE_VPC_DATA_MODE=supabase`.
+- Estrutura Supabase isolada em tabelas `vpc_` para evitar conflito com outros projetos.
 
 ## Tecnologias
 
@@ -54,21 +55,34 @@ Configuracao recomendada:
 
 O arquivo `vercel.json` ja deixa esses parametros definidos para o projeto.
 
+## Supabase
+
+Para conectar a uma base Supabase existente, execute:
+
+```text
+supabase/schema.sql
+supabase/catalog.sql
+```
+
+Depois configure na Vercel:
+
+```text
+VITE_VPC_DATA_MODE=supabase
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_VPC_AUTH_EMAIL_SUFFIX=vpc.vonixx.local
+```
+
+O VPC usa tabelas prefixadas com `vpc_` e nao grava registros excluidos como soft delete. Ao excluir lancamentos ou tratativas em producao, a aplicacao executa `DELETE` real na base SQL.
+
 ## Observacoes importantes
 
-Este MVP ainda nao possui backend real nem autenticacao segura. Os acessos atuais sao apenas uma simulacao de frontend para homologacao visual e operacional.
-
-Antes de compartilhar como sistema corporativo definitivo, a proxima fase deve conectar:
-
-- Supabase PostgreSQL
-- Supabase Auth ou outro provedor de autenticacao
-- Regras de permissao por departamento
-- Persistencia real dos lancamentos
-- Auditoria de edicoes e exclusoes
+No modo local, os acessos continuam simulados no navegador para homologacao visual. No modo Supabase, a autenticacao deve ser feita com usuarios do Supabase Auth e as permissoes por departamento sao aplicadas por RLS.
 
 Consulte tambem:
 
 - `docs/cloud-readiness.md`
+- `docs/supabase-integration.md`
 - `supabase/schema.sql`
 - `supabase/catalog.sql`
 

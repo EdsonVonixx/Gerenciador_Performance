@@ -1,5 +1,20 @@
 ﻿const operationalDepartmentKeys = ["almoxarifado", "recebimento", "estoque", "secos", "quimicas"];
 
+function readViteEnv(name) {
+  return String(import.meta.env?.[name] || "").trim();
+}
+
+const vpcSupabaseConfig = {
+  url: readViteEnv("VITE_SUPABASE_URL").replace(/\/+$/, ""),
+  anonKey: readViteEnv("VITE_SUPABASE_ANON_KEY"),
+  dataMode: readViteEnv("VITE_VPC_DATA_MODE").toLowerCase(),
+  authEmailSuffix: readViteEnv("VITE_VPC_AUTH_EMAIL_SUFFIX") || "vpc.vonixx.local",
+};
+
+let vpcSupabaseSession = null;
+const useSupabasePersistence =
+  vpcSupabaseConfig.dataMode === "supabase" && Boolean(vpcSupabaseConfig.url && vpcSupabaseConfig.anonKey);
+
 const actionExtraIndicatorName = "5S Operacional";
 const actionExtraIndicatorDepartments = new Set(["almoxarifado", "estoque"]);
 
@@ -498,6 +513,302 @@ function isManagement() {
 
 function currentDepartment() {
   return departments[selectedDepartmentKey];
+}
+
+function remotePersistenceActive() {
+  return useSupabasePersistence && Boolean(vpcSupabaseSession?.access_token);
+}
+
+function getSupabaseAuthEmail(profile) {
+  return `${profile.key}@${vpcSupabaseConfig.authEmailSuffix}`;
+}
+
+async function supabaseAuthRequest(path, options = {}) {
+  const response = await fetch(`${vpcSupabaseConfig.url}/auth/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: vpcSupabaseConfig.anonKey,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+
+  const responseText = await response.text();
+  const payload = responseText ? JSON.parse(responseText) : null;
+
+  if (!response.ok) {
+    throw new Error(payload?.msg || payload?.message || "Falha de autenticação no Supabase.");
+  }
+
+  return payload;
+}
+
+async function signInSupabaseProfile(profile, password) {
+  if (!useSupabasePersistence) return null;
+
+  vpcSupabaseSession = await supabaseAuthRequest("token?grant_type=password", {
+    method: "POST",
+    body: JSON.stringify({
+      email: getSupabaseAuthEmail(profile),
+      password,
+    }),
+  });
+
+  return vpcSupabaseSession;
+}
+
+function signOutSupabaseProfile() {
+  vpcSupabaseSession = null;
+}
+
+async function supabaseRestRequest(table, options = {}) {
+  if (!remotePersistenceActive()) {
+    throw new Error("Supabase não está autenticado.");
+  }
+
+  const {
+    method = "GET",
+    query = "",
+    body = null,
+    prefer = null,
+  } = options;
+
+  const requestUrl = `${vpcSupabaseConfig.url}/rest/v1/${table}${query}`;
+  const headers = {
+    apikey: vpcSupabaseConfig.anonKey,
+    Authorization: `Bearer ${vpcSupabaseSession.access_token}`,
+    "Content-Type": "application/json",
+  };
+
+  if (prefer) headers.Prefer = prefer;
+
+  const response = await fetch(requestUrl, {
+    method,
+    headers,
+    body: body === null ? null : JSON.stringify(body),
+  });
+
+  const responseText = await response.text();
+  const payload = responseText ? JSON.parse(responseText) : null;
+
+  if (!response.ok) {
+    throw new Error(payload?.message || payload?.hint || "Falha na comunicação com o Supabase.");
+  }
+
+  return payload;
+}
+
+function getIndicatorByName(departmentKey, indicatorName) {
+  return departments[departmentKey]?.indicators.find((indicator) => indicator.name === indicatorName) || null;
+}
+
+function encodeSupabaseFilterValue(value) {
+  return encodeURIComponent(String(value));
+}
+
+function launchToSupabaseRow(launch, departmentKey = selectedDepartmentKey) {
+  const indicator = getIndicatorByName(departmentKey, launch.indicator);
+  const formulaType = getLaunchFormulaType(launch.indicator);
+  const numericValue = getLaunchNumericValue(launch, indicator);
+
+  return {
+    id: launch.id,
+    department_slug: departmentKey,
+    indicator_name: launch.indicator,
+    record_date: launch.date,
+    shift: normalizeLaunchShift(launch.shift),
+    value: numericValue,
+    unit: indicator?.unit || "",
+    formula_type: formulaType,
+    formula_data: launch.formulaData || {},
+    comment: launch.comment || null,
+  };
+}
+
+function supabaseRowToLaunch(row) {
+  const numericValue = Number(row.value);
+  return {
+    id: row.id,
+    indicator: row.indicator_name,
+    value: Number.isFinite(numericValue) ? numericValue : row.value,
+    numericValue,
+    shift: normalizeLaunchShift(row.shift),
+    date: row.record_date,
+    comment: row.comment || "",
+    formulaData: row.formula_data || {},
+  };
+}
+
+function actionRecordToSupabaseRow(record, departmentKey = selectedDepartmentKey) {
+  return {
+    id: record.id,
+    department_slug: departmentKey,
+    indicator_name: record.indicator,
+    type: record.type,
+    status: normalizeRecordStatusLabel(record.status),
+    owner: record.owner || "",
+    due_date: record.dueDate || null,
+    record_date: getRecordDate(record),
+    description: record.description || "",
+    file_name: record.file || null,
+  };
+}
+
+function supabaseRowToActionRecord(row) {
+  return {
+    id: row.id,
+    type: row.type,
+    indicator: row.indicator_name,
+    owner: row.owner || "",
+    dueDate: row.due_date || "",
+    recordDate: row.record_date,
+    status: normalizeRecordStatusLabel(row.status),
+    description: row.description || "",
+    file: row.file_name || "",
+  };
+}
+
+function resetRemoteDepartmentState(departmentKey) {
+  const department = departments[departmentKey];
+  if (!department) return;
+
+  department.launches = [];
+  department.records = [];
+  department.indicators = department.indicators.map((indicator) => ({
+    ...indicator,
+    value: null,
+    history: [],
+    details: [],
+  }));
+}
+
+function rebuildIndicatorsFromLaunches(departmentKey) {
+  const department = departments[departmentKey];
+  if (!department) return;
+
+  const previousDepartmentKey = selectedDepartmentKey;
+  selectedDepartmentKey = departmentKey;
+
+  department.indicators = department.indicators.map((indicator) => ({
+    ...indicator,
+    value: null,
+    history: [],
+    details: [],
+  }));
+
+  [...department.launches]
+    .sort((left, right) => {
+      const leftDate = toDateOrNull(left.date);
+      const rightDate = toDateOrNull(right.date);
+      if (leftDate && rightDate) return leftDate - rightDate;
+      return 0;
+    })
+    .forEach((launch) => {
+      const indicator = getIndicatorByName(departmentKey, launch.indicator);
+      if (!indicator) return;
+      const numericValue = getLaunchNumericValue(launch, indicator);
+      if (!Number.isFinite(numericValue)) return;
+
+      const formulaType = getLaunchFormulaType(launch.indicator);
+      const historyEntry = buildHistoryEntry(launch.date, numericValue, formulaType, launch.formulaData, launch.id);
+      indicator.value = numericValue;
+      indicator.history = [...getIndicatorHistory(indicator, department), historyEntry];
+      sortIndicatorHistory(indicator);
+      applyLaunchFormulaDetails(indicator, formulaType, launch.formulaData);
+      applyAlmoxarifadoLaunchFormulaDetails(indicator, formulaType, launch.formulaData);
+      applyRecebimentoLaunchFormulaDetails(indicator, formulaType, launch.formulaData);
+      applyEstoqueLaunchFormulaDetails(indicator, formulaType, launch.formulaData);
+      applySecosLaunchFormulaDetails(indicator, formulaType, launch.formulaData);
+      applyQuimicasLaunchFormulaDetails(indicator, formulaType, launch.formulaData);
+    });
+
+  selectedDepartmentKey = previousDepartmentKey;
+}
+
+async function loadSupabaseState() {
+  if (!remotePersistenceActive()) return false;
+
+  const [launchRows, actionRows] = await Promise.all([
+    supabaseRestRequest(
+      "vpc_launches",
+      { query: "?select=*&order=record_date.desc,created_at.desc" },
+    ),
+    supabaseRestRequest(
+      "vpc_action_records",
+      { query: "?select=*&order=record_date.desc,created_at.desc" },
+    ),
+  ]);
+
+  operationalDepartmentKeys.forEach((departmentKey) => resetRemoteDepartmentState(departmentKey));
+
+  (launchRows || []).forEach((row) => {
+    const department = departments[row.department_slug];
+    if (!department || !getIndicatorByName(row.department_slug, row.indicator_name)) return;
+    department.launches.push(supabaseRowToLaunch(row));
+  });
+
+  (actionRows || []).forEach((row) => {
+    const department = departments[row.department_slug];
+    if (!department) return;
+    department.records.push(supabaseRowToActionRecord(row));
+  });
+
+  operationalDepartmentKeys.forEach((departmentKey) => rebuildIndicatorsFromLaunches(departmentKey));
+  ensureLaunchIds();
+  ensureRecordMetadata();
+  syncIdCountersFromState();
+  return true;
+}
+
+async function persistSupabaseLaunch(launch, departmentKey = selectedDepartmentKey) {
+  if (!remotePersistenceActive()) return false;
+  await supabaseRestRequest("vpc_launches?on_conflict=id", {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=minimal",
+    body: launchToSupabaseRow(launch, departmentKey),
+  });
+  return true;
+}
+
+async function deleteSupabaseLaunch(launchId) {
+  if (!remotePersistenceActive()) return false;
+  await supabaseRestRequest("vpc_launches", {
+    method: "DELETE",
+    query: `?id=eq.${encodeSupabaseFilterValue(launchId)}`,
+    prefer: "return=minimal",
+  });
+  return true;
+}
+
+async function persistSupabaseActionRecord(record, departmentKey = selectedDepartmentKey) {
+  if (!remotePersistenceActive()) return false;
+  await supabaseRestRequest("vpc_action_records?on_conflict=id", {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=minimal",
+    body: actionRecordToSupabaseRow(record, departmentKey),
+  });
+  return true;
+}
+
+async function patchSupabaseActionRecord(recordId, patch) {
+  if (!remotePersistenceActive()) return false;
+  await supabaseRestRequest("vpc_action_records", {
+    method: "PATCH",
+    query: `?id=eq.${encodeSupabaseFilterValue(recordId)}`,
+    prefer: "return=minimal",
+    body: patch,
+  });
+  return true;
+}
+
+async function deleteSupabaseActionRecord(recordId) {
+  if (!remotePersistenceActive()) return false;
+  await supabaseRestRequest("vpc_action_records", {
+    method: "DELETE",
+    query: `?id=eq.${encodeSupabaseFilterValue(recordId)}`,
+    prefer: "return=minimal",
+  });
+  return true;
 }
 
 function getInitials(name) {
@@ -1230,13 +1541,13 @@ function isDateInsidePeriod(date, start, end) {
 }
 
 function generateLaunchId() {
-  const id = `launch-${launchIdCounter}`;
+  const id = window.crypto?.randomUUID ? `launch-${window.crypto.randomUUID()}` : `launch-${launchIdCounter}`;
   launchIdCounter += 1;
   return id;
 }
 
 function generateRecordId() {
-  const id = `record-${recordIdCounter}`;
+  const id = window.crypto?.randomUUID ? `record-${window.crypto.randomUUID()}` : `record-${recordIdCounter}`;
   recordIdCounter += 1;
   return id;
 }
@@ -4044,10 +4355,18 @@ function startLaunchEdit(launchId) {
   showToast("Edição carregada.");
 }
 
-function deleteLaunch(launchId) {
+async function deleteLaunch(launchId) {
   const department = currentDepartment();
   const launch = department.launches.find((item) => item.id === launchId);
   if (!launch) return;
+
+  try {
+    await deleteSupabaseLaunch(launchId);
+  } catch (error) {
+    console.error("Não foi possível excluir o lançamento no Supabase.", error);
+    showToast("Falha ao excluir no banco de dados.");
+    return;
+  }
 
   department.launches = department.launches.filter((item) => item.id !== launchId);
   removeHistoryByLaunchId(launchId, department);
@@ -4060,7 +4379,7 @@ function deleteLaunch(launchId) {
   writePrototypeState();
   renderAll();
   setView(currentView);
-  showToast("Lançamento excluído.");
+  showToast(remotePersistenceActive() ? "Lançamento excluído da base SQL." : "Lançamento excluído.");
 }
 
 function getRecordTone(record) {
@@ -4235,10 +4554,18 @@ function startRecordEdit(recordId) {
   showToast("Edição carregada.");
 }
 
-function deleteRecord(recordId) {
+async function deleteRecord(recordId) {
   const department = currentDepartment();
   const record = department.records.find((item) => item.id === recordId);
   if (!record) return;
+
+  try {
+    await deleteSupabaseActionRecord(recordId);
+  } catch (error) {
+    console.error("Não foi possível excluir o registro no Supabase.", error);
+    showToast("Falha ao excluir no banco de dados.");
+    return;
+  }
 
   department.records = department.records.filter((item) => item.id !== recordId);
   if (editingRecordId === recordId) {
@@ -4249,14 +4576,26 @@ function deleteRecord(recordId) {
   writePrototypeState();
   renderAll();
   setView(currentView);
-  showToast("Registro excluído.");
+  showToast(remotePersistenceActive() ? "Registro excluído da base SQL." : "Registro excluído.");
 }
 
-function updateRecordStatus(recordId, nextStatus, departmentKey = selectedDepartmentKey) {
+async function updateRecordStatus(recordId, nextStatus, departmentKey = selectedDepartmentKey) {
   const department = departments[departmentKey] || currentDepartment();
   const record = department.records.find((item) => item.id === recordId);
   if (!record) return;
-  record.status = normalizeRecordStatusLabel(nextStatus);
+  const normalizedStatus = normalizeRecordStatusLabel(nextStatus);
+
+  try {
+    await patchSupabaseActionRecord(recordId, { status: normalizedStatus });
+  } catch (error) {
+    console.error("Não foi possível atualizar o status no Supabase.", error);
+    showToast("Falha ao atualizar no banco de dados.");
+    renderAll();
+    setView(currentView);
+    return;
+  }
+
+  record.status = normalizedStatus;
   writePrototypeState();
   renderAll();
   setView(currentView);
@@ -4867,16 +5206,27 @@ function setDefaultDates() {
 }
 
 function setupLogin() {
-  qs("#loginForm").addEventListener("submit", (event) => {
+  qs("#loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const sector = String(data.get("sector"));
-    const password = String(data.get("password")).trim().toUpperCase();
-    const profile = accessProfiles.find((candidate) => candidate.key === sector && candidate.password === password);
+    const rawPassword = String(data.get("password")).trim();
+    const password = rawPassword.toUpperCase();
+    const profile = accessProfiles.find((candidate) => candidate.key === sector);
 
-    if (!profile) {
+    if (!profile || (!useSupabasePersistence && profile.password !== password)) {
       qs("#loginError").textContent = "Setor ou senha inválidos.";
       return;
+    }
+
+    if (useSupabasePersistence) {
+      try {
+        await signInSupabaseProfile(profile, password);
+      } catch (error) {
+        console.error("Falha no login Supabase.", error);
+        qs("#loginError").textContent = "Setor ou senha inválidos no ambiente online.";
+        return;
+      }
     }
 
     currentUser = profile;
@@ -4890,6 +5240,21 @@ function setupLogin() {
     ensureRecordMetadata();
     rememberBaselineRecords();
     restorePrototypeState();
+
+    if (remotePersistenceActive()) {
+      try {
+        await loadSupabaseState();
+      } catch (error) {
+        console.error("Não foi possível carregar a base SQL.", error);
+        signOutSupabaseProfile();
+        currentUser = null;
+        qs("#loginScreen").classList.remove("hidden");
+        qs("#appShell").classList.add("hidden");
+        qs("#loginError").textContent = "Não foi possível carregar a base SQL. Tente novamente.";
+        return;
+      }
+    }
+
     resetColumnFilters();
     renderAll();
     resetLaunchFormState();
@@ -4930,6 +5295,7 @@ function setupInteractions() {
   });
 
   qs("#logoutButton").addEventListener("click", () => {
+    signOutSupabaseProfile();
     currentUser = null;
     selectedDepartmentKey = "almoxarifado";
     currentPeriod = "semana";
@@ -4944,7 +5310,16 @@ function setupInteractions() {
     setView("dashboard");
   });
 
-  qs("#refreshButton").addEventListener("click", () => {
+  qs("#refreshButton").addEventListener("click", async () => {
+    if (remotePersistenceActive()) {
+      try {
+        await loadSupabaseState();
+      } catch (error) {
+        console.error("Não foi possível atualizar a base SQL.", error);
+        showToast("Falha ao atualizar a base SQL.");
+        return;
+      }
+    }
     renderAll();
     showToast(currentView === "tv" ? "TV atualizada." : "Painel atualizado.");
   });
@@ -5007,7 +5382,7 @@ function setupInteractions() {
     input.addEventListener("change", applyFilter);
   });
 
-  qs("#launchForm").addEventListener("submit", (event) => {
+  qs("#launchForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     if (isManagement()) return;
 
@@ -5036,6 +5411,14 @@ function setupInteractions() {
       comment: String(data.get("comment")),
       formulaData: formulaPayload,
     };
+
+    try {
+      await persistSupabaseLaunch(launchRecord, selectedDepartmentKey);
+    } catch (error) {
+      console.error("Não foi possível salvar o lançamento no Supabase.", error);
+      showToast("Falha ao salvar no banco de dados.");
+      return;
+    }
 
     if (indicator && Number.isFinite(value)) {
       indicator.value = value;
@@ -5066,7 +5449,13 @@ function setupInteractions() {
     syncLaunchFormByIndicator();
     renderAll();
     setView("launches");
-    showToast(wasEditing ? "Lançamento atualizado." : "Resultado salvo no protótipo.");
+    showToast(
+      wasEditing
+        ? "Lançamento atualizado."
+        : remotePersistenceActive()
+          ? "Resultado salvo na base SQL."
+          : "Resultado salvo no protótipo.",
+    );
   });
 
   qs("#actionCancelEdit").addEventListener("click", () => {
@@ -5173,7 +5562,7 @@ function setupInteractions() {
     updateRecordStatus(recordId, statusSelect.value, departmentKey);
   });
 
-  qs("#actionForm").addEventListener("submit", (event) => {
+  qs("#actionForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     if (isManagement()) return;
 
@@ -5199,6 +5588,14 @@ function setupInteractions() {
       file: file && file.name ? file.name : existingRecord?.file || "",
     };
 
+    try {
+      await persistSupabaseActionRecord(nextRecord, selectedDepartmentKey);
+    } catch (error) {
+      console.error("Não foi possível salvar o registro no Supabase.", error);
+      showToast("Falha ao salvar no banco de dados.");
+      return;
+    }
+
     const recordList = currentDepartment().records;
     const existingIndex = recordList.findIndex((record) => record.id === recordId);
     if (existingIndex >= 0) {
@@ -5213,7 +5610,13 @@ function setupInteractions() {
     resetActionFormState();
     renderAll();
     setView("actions");
-    showToast(wasEditing ? "Registro atualizado." : "Registro vinculado ao indicador.");
+    showToast(
+      wasEditing
+        ? "Registro atualizado."
+        : remotePersistenceActive()
+          ? "Registro salvo na base SQL."
+          : "Registro vinculado ao indicador.",
+    );
   });
 }
 
