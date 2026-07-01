@@ -34,7 +34,7 @@ const accessProfiles = [
   },
   {
     key: "quimicas",
-    label: "Operações Químicas",
+    label: "Separação Química",
     password: "OQ5",
     role: "Acesso operacional",
     departmentKey: "quimicas",
@@ -131,14 +131,15 @@ const departments = {
     records: [],
   },
   quimicas: {
-    label: "Operações Químicas",
+    label: "Separação Química",
     color: "#c8452d",
     indicators: [
-      { name: "Conformidade Química", unit: "%", target: 99, goal: "higher" },
-      { name: "Perdas Químicas", unit: "%", target: 0.8, goal: "lower" },
-      { name: "Produtividade Química", unit: "bat/h", target: 100, goal: "higher" },
-      { name: "Acuracidade de Lote", unit: "%", target: 98, goal: "higher" },
-      { name: "Segurança Operacional", unit: "ocorr", target: 0, goal: "lower" },
+      { name: "Confiabilidade do Abastecimento da Produção", unit: "%", target: 90, goal: "higher", targetLabel: "Meta" },
+      { name: "Eficiência no Atendimento das OPs", unit: "%", target: 90, goal: "higher", targetLabel: "Meta" },
+      { name: "Índice de Retrabalho de Separação", unit: "%", target: 0.1, goal: "lower", targetLabel: "Meta" },
+      { name: "Taxa de Giro do Kanban", unit: "%", target: 3, goal: "lower", targetLabel: "Meta" },
+      { name: "Produtividade de OPs Separadas", unit: "%", target: 100, goal: "higher", targetLabel: "Meta" },
+      { name: "Produtividade Individual", unit: "atividades/colab", target: null, goal: "tracking", statusText: "Acompanhamento" },
     ],
     launches: [],
     records: [],
@@ -867,6 +868,66 @@ function getCardDetails(indicator) {
     }
   }
 
+  if (selectedDepartmentKey === "quimicas" && indicatorKey.includes("confiabilidade") && indicatorKey.includes("abastecimento")) {
+    const rows = rowsWithFields(["chemSupplyOkOps", "chemTotalOps"]);
+    if (rows.length > 0) {
+      return [
+        ["OPs sem atraso/divergência", formatNumber(sumField(rows, "chemSupplyOkOps"))],
+        ["Total de OPs", formatNumber(sumField(rows, "chemTotalOps"))],
+      ];
+    }
+  }
+
+  if (selectedDepartmentKey === "quimicas" && indicatorKey.includes("eficiencia") && indicatorKey.includes("atendimento")) {
+    const rows = rowsWithFields(["chemDeliveredOps", "chemPlannedOps"]);
+    if (rows.length > 0) {
+      return [
+        ["OPs entregues", formatNumber(sumField(rows, "chemDeliveredOps"))],
+        ["OPs previstas", formatNumber(sumField(rows, "chemPlannedOps"))],
+      ];
+    }
+  }
+
+  if (selectedDepartmentKey === "quimicas" && indicatorKey.includes("retrabalho") && indicatorKey.includes("separacao")) {
+    const rows = rowsWithFields(["chemReworkOps", "chemSeparatedOps"]);
+    if (rows.length > 0) {
+      return [
+        ["Retrabalhos/repesagens", formatNumber(sumField(rows, "chemReworkOps"))],
+        ["OPs separadas", formatNumber(sumField(rows, "chemSeparatedOps"))],
+      ];
+    }
+  }
+
+  if (selectedDepartmentKey === "quimicas" && indicatorKey.includes("giro") && indicatorKey.includes("kanban")) {
+    const rows = rowsWithFields(["chemKanbanOver7DaysOps", "chemKanbanTotalOps"]);
+    if (rows.length > 0) {
+      return [
+        ["OPs > 7 dias", formatNumber(sumField(rows, "chemKanbanOver7DaysOps"))],
+        ["Total no Kanban", formatNumber(sumField(rows, "chemKanbanTotalOps"))],
+      ];
+    }
+  }
+
+  if (selectedDepartmentKey === "quimicas" && indicatorKey.includes("produtividade") && indicatorKey.includes("ops") && indicatorKey.includes("separadas")) {
+    const rows = rowsWithFields(["chemShiftDeliveredOps", "chemShiftTargetOps"]);
+    if (rows.length > 0) {
+      return [
+        ["OPs entregues no turno", formatNumber(sumField(rows, "chemShiftDeliveredOps"))],
+        ["Meta do turno", formatNumber(sumField(rows, "chemShiftTargetOps"))],
+      ];
+    }
+  }
+
+  if (selectedDepartmentKey === "quimicas" && indicatorKey.includes("produtividade") && indicatorKey.includes("individual")) {
+    const rows = rowsWithFields(["completedShiftActivities", "collaboratorCount"]);
+    if (rows.length > 0) {
+      return [
+        ["Atividades concluídas", formatNumber(sumField(rows, "completedShiftActivities"))],
+        ["Colaboradores", formatNumber(sumField(rows, "collaboratorCount"))],
+      ];
+    }
+  }
+
   if (indicatorKey.includes("ruptura") && indicatorKey.includes("estocaveis")) {
     const rows = rowsWithFields(["zeroStockMaintenanceItems", "stockableMaintenanceItems"]);
     if (rows.length > 0) {
@@ -1527,6 +1588,26 @@ function getLaunchFormulaType(indicatorName) {
       return "secos_produtividade_individual";
     }
   }
+  if (selectedDepartmentKey === "quimicas") {
+    if (key.includes("confiabilidade") && key.includes("abastecimento")) {
+      return "quimica_confiabilidade_abastecimento";
+    }
+    if (key.includes("eficiencia") && key.includes("atendimento")) {
+      return "quimica_eficiencia_atendimento_ops";
+    }
+    if (key.includes("retrabalho") && key.includes("separacao")) {
+      return "quimica_retrabalho_separacao";
+    }
+    if (key.includes("giro") && key.includes("kanban")) {
+      return "quimica_giro_kanban";
+    }
+    if (key.includes("produtividade") && key.includes("ops") && key.includes("separadas")) {
+      return "quimica_produtividade_ops_separadas";
+    }
+    if (key.includes("produtividade") && key.includes("individual")) {
+      return "quimica_produtividade_individual";
+    }
+  }
   if (key.includes("ruptura") && key.includes("estocave")) return "ruptura_estocaveis";
   if (key.includes("acuracidade") && key.includes("estoque") && key.includes("itens")) return "acuracidade_uso_consumo";
   if (key.includes("aderencia") && key.includes("estoque") && key.includes("minimo")) return "aderencia_estoque_minimo";
@@ -1837,6 +1918,49 @@ launchFormulaDefinitions.secos_tempo_carregamento_carretas = {
 };
 
 launchFormulaDefinitions.secos_produtividade_individual = {
+  title: "Cálculo de Produtividade Individual",
+  hint: "Produtividade = Atividades concluídas / Total de colaboradores.",
+  fields: ["completedShiftActivities", "collaboratorCount"],
+  allowNegative: false,
+  resultSuffix: " atividades/colab",
+};
+
+launchFormulaDefinitions.quimica_confiabilidade_abastecimento = {
+  title: "Cálculo de Confiabilidade do Abastecimento da Produção",
+  hint: "Confiabilidade (%) = (OPs abastecidas sem atraso/divergência / Total de OPs) x 100.",
+  fields: ["chemSupplyOkOps", "chemTotalOps"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.quimica_eficiencia_atendimento_ops = {
+  title: "Cálculo de Eficiência no Atendimento das OPs",
+  hint: "Eficiência (%) = (OPs entregues / Total de OPs previstas) x 100.",
+  fields: ["chemDeliveredOps", "chemPlannedOps"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.quimica_retrabalho_separacao = {
+  title: "Cálculo de Índice de Retrabalho de Separação",
+  hint: "Retrabalho (%) = (Retrabalhos ou repesagens / Total de OPs separadas) x 100.",
+  fields: ["chemReworkOps", "chemSeparatedOps"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.quimica_giro_kanban = {
+  title: "Cálculo de Taxa de Giro do Kanban",
+  hint: "Giro do Kanban (%) = (OPs acima de 7 dias no Kanban / Total de OPs no Kanban) x 100.",
+  fields: ["chemKanbanOver7DaysOps", "chemKanbanTotalOps"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.quimica_produtividade_ops_separadas = {
+  title: "Cálculo de Produtividade de OPs Separadas",
+  hint: "Produtividade (%) = (OPs entregues no turno / Meta de entrega do turno) x 100.",
+  fields: ["chemShiftDeliveredOps", "chemShiftTargetOps"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.quimica_produtividade_individual = {
   title: "Cálculo de Produtividade Individual",
   hint: "Produtividade = Atividades concluídas / Total de colaboradores.",
   fields: ["completedShiftActivities", "collaboratorCount"],
@@ -2171,6 +2295,48 @@ function computeLaunchFormulaValue(formulaType) {
     return completedShiftActivities / collaboratorCount;
   }
 
+  if (formulaType === "quimica_confiabilidade_abastecimento") {
+    const chemSupplyOkOps = getLaunchFormulaFieldValue("chemSupplyOkOps");
+    const chemTotalOps = getLaunchFormulaFieldValue("chemTotalOps");
+    if (!Number.isFinite(chemSupplyOkOps) || !Number.isFinite(chemTotalOps) || chemTotalOps <= 0) return NaN;
+    return (chemSupplyOkOps / chemTotalOps) * 100;
+  }
+
+  if (formulaType === "quimica_eficiencia_atendimento_ops") {
+    const chemDeliveredOps = getLaunchFormulaFieldValue("chemDeliveredOps");
+    const chemPlannedOps = getLaunchFormulaFieldValue("chemPlannedOps");
+    if (!Number.isFinite(chemDeliveredOps) || !Number.isFinite(chemPlannedOps) || chemPlannedOps <= 0) return NaN;
+    return (chemDeliveredOps / chemPlannedOps) * 100;
+  }
+
+  if (formulaType === "quimica_retrabalho_separacao") {
+    const chemReworkOps = getLaunchFormulaFieldValue("chemReworkOps");
+    const chemSeparatedOps = getLaunchFormulaFieldValue("chemSeparatedOps");
+    if (!Number.isFinite(chemReworkOps) || !Number.isFinite(chemSeparatedOps) || chemSeparatedOps <= 0) return NaN;
+    return (chemReworkOps / chemSeparatedOps) * 100;
+  }
+
+  if (formulaType === "quimica_giro_kanban") {
+    const chemKanbanOver7DaysOps = getLaunchFormulaFieldValue("chemKanbanOver7DaysOps");
+    const chemKanbanTotalOps = getLaunchFormulaFieldValue("chemKanbanTotalOps");
+    if (!Number.isFinite(chemKanbanOver7DaysOps) || !Number.isFinite(chemKanbanTotalOps) || chemKanbanTotalOps <= 0) return NaN;
+    return (chemKanbanOver7DaysOps / chemKanbanTotalOps) * 100;
+  }
+
+  if (formulaType === "quimica_produtividade_ops_separadas") {
+    const chemShiftDeliveredOps = getLaunchFormulaFieldValue("chemShiftDeliveredOps");
+    const chemShiftTargetOps = getLaunchFormulaFieldValue("chemShiftTargetOps");
+    if (!Number.isFinite(chemShiftDeliveredOps) || !Number.isFinite(chemShiftTargetOps) || chemShiftTargetOps <= 0) return NaN;
+    return (chemShiftDeliveredOps / chemShiftTargetOps) * 100;
+  }
+
+  if (formulaType === "quimica_produtividade_individual") {
+    const completedShiftActivities = getLaunchFormulaFieldValue("completedShiftActivities");
+    const collaboratorCount = getLaunchFormulaFieldValue("collaboratorCount");
+    if (!Number.isFinite(completedShiftActivities) || !Number.isFinite(collaboratorCount) || collaboratorCount <= 0) return NaN;
+    return completedShiftActivities / collaboratorCount;
+  }
+
   if (formulaType === "movimentacao_colaborador") {
     const movedItems = getLaunchFormulaFieldValue("movedItems");
     const collaboratorCount = getLaunchFormulaFieldValue("collaboratorCount");
@@ -2299,6 +2465,16 @@ function syncLaunchFormByIndicator() {
     "wrongOps",
     "requestedOps",
     "expeditionErrorValue",
+    "chemSupplyOkOps",
+    "chemTotalOps",
+    "chemDeliveredOps",
+    "chemPlannedOps",
+    "chemReworkOps",
+    "chemSeparatedOps",
+    "chemKanbanOver7DaysOps",
+    "chemKanbanTotalOps",
+    "chemShiftDeliveredOps",
+    "chemShiftTargetOps",
     "initialStock",
     "entriesValue",
     "outboundValue",
@@ -3285,6 +3461,59 @@ function applySecosLaunchFormulaDetails(indicator, formulaType, payload) {
   }
 }
 
+function applyQuimicasLaunchFormulaDetails(indicator, formulaType, payload) {
+  if (selectedDepartmentKey !== "quimicas") return;
+  if (!indicator || !payload) return;
+
+  if (formulaType === "quimica_confiabilidade_abastecimento") {
+    if (!Number.isFinite(payload.chemSupplyOkOps) || !Number.isFinite(payload.chemTotalOps)) return;
+    indicator.details = [
+      ["OPs sem atraso/divergência", formatNumber(payload.chemSupplyOkOps)],
+      ["Total de OPs", formatNumber(payload.chemTotalOps)],
+    ];
+  }
+
+  if (formulaType === "quimica_eficiencia_atendimento_ops") {
+    if (!Number.isFinite(payload.chemDeliveredOps) || !Number.isFinite(payload.chemPlannedOps)) return;
+    indicator.details = [
+      ["OPs entregues", formatNumber(payload.chemDeliveredOps)],
+      ["OPs previstas", formatNumber(payload.chemPlannedOps)],
+    ];
+  }
+
+  if (formulaType === "quimica_retrabalho_separacao") {
+    if (!Number.isFinite(payload.chemReworkOps) || !Number.isFinite(payload.chemSeparatedOps)) return;
+    indicator.details = [
+      ["Retrabalhos/repesagens", formatNumber(payload.chemReworkOps)],
+      ["OPs separadas", formatNumber(payload.chemSeparatedOps)],
+    ];
+  }
+
+  if (formulaType === "quimica_giro_kanban") {
+    if (!Number.isFinite(payload.chemKanbanOver7DaysOps) || !Number.isFinite(payload.chemKanbanTotalOps)) return;
+    indicator.details = [
+      ["OPs > 7 dias", formatNumber(payload.chemKanbanOver7DaysOps)],
+      ["Total no Kanban", formatNumber(payload.chemKanbanTotalOps)],
+    ];
+  }
+
+  if (formulaType === "quimica_produtividade_ops_separadas") {
+    if (!Number.isFinite(payload.chemShiftDeliveredOps) || !Number.isFinite(payload.chemShiftTargetOps)) return;
+    indicator.details = [
+      ["OPs entregues no turno", formatNumber(payload.chemShiftDeliveredOps)],
+      ["Meta do turno", formatNumber(payload.chemShiftTargetOps)],
+    ];
+  }
+
+  if (formulaType === "quimica_produtividade_individual") {
+    if (!Number.isFinite(payload.completedShiftActivities) || !Number.isFinite(payload.collaboratorCount)) return;
+    indicator.details = [
+      ["Atividades concluídas", formatNumber(payload.completedShiftActivities)],
+      ["Colaboradores", formatNumber(payload.collaboratorCount)],
+    ];
+  }
+}
+
 function extractFormulaPayload(formData, formulaType) {
   if (!formulaType) return null;
 
@@ -3516,6 +3745,42 @@ function extractFormulaPayload(formData, formulaType) {
       collaboratorCount: parseLocalizedNumber(formData.get("collaboratorCount")),
     };
   }
+  if (formulaType === "quimica_confiabilidade_abastecimento") {
+    return {
+      chemSupplyOkOps: parseLocalizedNumber(formData.get("chemSupplyOkOps")),
+      chemTotalOps: parseLocalizedNumber(formData.get("chemTotalOps")),
+    };
+  }
+  if (formulaType === "quimica_eficiencia_atendimento_ops") {
+    return {
+      chemDeliveredOps: parseLocalizedNumber(formData.get("chemDeliveredOps")),
+      chemPlannedOps: parseLocalizedNumber(formData.get("chemPlannedOps")),
+    };
+  }
+  if (formulaType === "quimica_retrabalho_separacao") {
+    return {
+      chemReworkOps: parseLocalizedNumber(formData.get("chemReworkOps")),
+      chemSeparatedOps: parseLocalizedNumber(formData.get("chemSeparatedOps")),
+    };
+  }
+  if (formulaType === "quimica_giro_kanban") {
+    return {
+      chemKanbanOver7DaysOps: parseLocalizedNumber(formData.get("chemKanbanOver7DaysOps")),
+      chemKanbanTotalOps: parseLocalizedNumber(formData.get("chemKanbanTotalOps")),
+    };
+  }
+  if (formulaType === "quimica_produtividade_ops_separadas") {
+    return {
+      chemShiftDeliveredOps: parseLocalizedNumber(formData.get("chemShiftDeliveredOps")),
+      chemShiftTargetOps: parseLocalizedNumber(formData.get("chemShiftTargetOps")),
+    };
+  }
+  if (formulaType === "quimica_produtividade_individual") {
+    return {
+      completedShiftActivities: parseLocalizedNumber(formData.get("completedShiftActivities")),
+      collaboratorCount: parseLocalizedNumber(formData.get("collaboratorCount")),
+    };
+  }
   if (formulaType === "movimentacao_colaborador") {
     return {
       movedItems: parseLocalizedNumber(formData.get("movedItems")),
@@ -3697,6 +3962,30 @@ function buildHistoryEntry(dateValue, numericValue, formulaType, formulaPayload,
     entry.loadingTotalMinutes = formulaPayload.loadingTotalMinutes;
   }
   if (formulaType === "secos_produtividade_individual") {
+    entry.completedShiftActivities = formulaPayload.completedShiftActivities;
+    entry.collaboratorCount = formulaPayload.collaboratorCount;
+  }
+  if (formulaType === "quimica_confiabilidade_abastecimento") {
+    entry.chemSupplyOkOps = formulaPayload.chemSupplyOkOps;
+    entry.chemTotalOps = formulaPayload.chemTotalOps;
+  }
+  if (formulaType === "quimica_eficiencia_atendimento_ops") {
+    entry.chemDeliveredOps = formulaPayload.chemDeliveredOps;
+    entry.chemPlannedOps = formulaPayload.chemPlannedOps;
+  }
+  if (formulaType === "quimica_retrabalho_separacao") {
+    entry.chemReworkOps = formulaPayload.chemReworkOps;
+    entry.chemSeparatedOps = formulaPayload.chemSeparatedOps;
+  }
+  if (formulaType === "quimica_giro_kanban") {
+    entry.chemKanbanOver7DaysOps = formulaPayload.chemKanbanOver7DaysOps;
+    entry.chemKanbanTotalOps = formulaPayload.chemKanbanTotalOps;
+  }
+  if (formulaType === "quimica_produtividade_ops_separadas") {
+    entry.chemShiftDeliveredOps = formulaPayload.chemShiftDeliveredOps;
+    entry.chemShiftTargetOps = formulaPayload.chemShiftTargetOps;
+  }
+  if (formulaType === "quimica_produtividade_individual") {
     entry.completedShiftActivities = formulaPayload.completedShiftActivities;
     entry.collaboratorCount = formulaPayload.collaboratorCount;
   }
@@ -4759,6 +5048,7 @@ function setupInteractions() {
       applyRecebimentoLaunchFormulaDetails(indicator, formulaType, formulaPayload);
       applyEstoqueLaunchFormulaDetails(indicator, formulaType, formulaPayload);
       applySecosLaunchFormulaDetails(indicator, formulaType, formulaPayload);
+      applyQuimicasLaunchFormulaDetails(indicator, formulaType, formulaPayload);
     }
 
     const launchList = currentDepartment().launches;

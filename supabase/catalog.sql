@@ -8,7 +8,7 @@ values
   ('recebimento', 'Recebimento e Armazenagem', '#2f68a7'),
   ('estoque', 'Estoque e Inventário', '#7352a3'),
   ('secos', 'Operação Secos e Expedição', '#b87818'),
-  ('quimicas', 'Operações Químicas', '#c8452d')
+  ('quimicas', 'Separação Química', '#c8452d')
 on conflict (slug) do update
 set
   name = excluded.name,
@@ -62,11 +62,12 @@ from (
     ('secos', 'Tempo Médio Carregamento Carretas', 'min', 60, 'lower', 'Meta', 'secos_tempo_carregamento_carretas', 6),
     ('secos', 'Produtividade Individual', 'atividades/colab', null, 'tracking', 'Acompanhamento', 'secos_produtividade_individual', 7),
 
-    ('quimicas', 'Conformidade Química', '%', 99, 'higher', 'Meta', null, 1),
-    ('quimicas', 'Perdas Químicas', '%', 0.8, 'lower', 'Limite', null, 2),
-    ('quimicas', 'Produtividade Química', 'bat/h', 100, 'higher', 'Meta', null, 3),
-    ('quimicas', 'Acuracidade de Lote', '%', 98, 'higher', 'Meta', null, 4),
-    ('quimicas', 'Segurança Operacional', 'ocorr', 0, 'lower', 'Limite', null, 5)
+    ('quimicas', 'Confiabilidade do Abastecimento da Produção', '%', 90, 'higher', 'Meta', 'quimica_confiabilidade_abastecimento', 1),
+    ('quimicas', 'Eficiência no Atendimento das OPs', '%', 90, 'higher', 'Meta', 'quimica_eficiencia_atendimento_ops', 2),
+    ('quimicas', 'Índice de Retrabalho de Separação', '%', 0.1, 'lower', 'Meta', 'quimica_retrabalho_separacao', 3),
+    ('quimicas', 'Taxa de Giro do Kanban', '%', 3, 'lower', 'Meta', 'quimica_giro_kanban', 4),
+    ('quimicas', 'Produtividade de OPs Separadas', '%', 100, 'higher', 'Meta', 'quimica_produtividade_ops_separadas', 5),
+    ('quimicas', 'Produtividade Individual', 'atividades/colab', null, 'tracking', 'Acompanhamento', 'quimica_produtividade_individual', 6)
 ) as catalog(slug, name, unit, target, goal, target_label, formula_type, position)
 join department_map on department_map.slug = catalog.slug
 on conflict (department_id, name) do update
