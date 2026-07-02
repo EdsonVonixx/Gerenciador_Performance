@@ -72,6 +72,10 @@
             <span class="nav-icon action-icon" aria-hidden="true"></span>
             Tratativas e Plano de Ação
           </button>
+          <button class="nav-item management-only hidden" data-view="analyses" type="button">
+            <span class="nav-icon analytics-icon" aria-hidden="true"></span>
+            Análises
+          </button>
           <button class="nav-item management-only hidden" data-view="tv" type="button">
             <span class="nav-icon tv-icon" aria-hidden="true"></span>
             TV Logística
@@ -913,6 +917,63 @@
           </section>
         </section>
 
+        <section class="view" data-view-panel="analyses">
+          <section class="analysis-screen">
+            <div class="analysis-heading">
+              <div>
+                <p class="eyebrow light">Gestão executiva</p>
+                <h2>Análises de performance</h2>
+              </div>
+              <span class="pill neutral" id="analysisPeriod">Semana</span>
+            </div>
+
+            <div class="analysis-summary-grid" id="analysisSummary"></div>
+
+            <div class="analysis-grid">
+              <section class="analysis-card analysis-performance">
+                <div class="analysis-card-heading">
+                  <div>
+                    <p class="eyebrow light">Performance</p>
+                    <h3>Performance por departamento</h3>
+                  </div>
+                </div>
+                <div class="analysis-department-bars" id="analysisDepartmentBars"></div>
+              </section>
+
+              <section class="analysis-card analysis-critical">
+                <div class="analysis-card-heading">
+                  <div>
+                    <p class="eyebrow light">Risco operacional</p>
+                    <h3>Indicadores críticos</h3>
+                  </div>
+                  <span class="pill danger" id="analysisCriticalCount">0</span>
+                </div>
+                <div class="analysis-critical-list" id="analysisCriticalList"></div>
+              </section>
+
+              <section class="analysis-card analysis-evolution">
+                <div class="analysis-card-heading">
+                  <div>
+                    <p class="eyebrow light">Evolução</p>
+                    <h3>Evolução mensal consolidada</h3>
+                  </div>
+                </div>
+                <canvas class="analysis-canvas" id="analysisMonthlyChart" width="720" height="300" aria-label="Gráfico de evolução mensal"></canvas>
+              </section>
+
+              <section class="analysis-card analysis-executive">
+                <div class="analysis-card-heading">
+                  <div>
+                    <p class="eyebrow light">Resumo executivo</p>
+                    <h3>Leitura gerencial</h3>
+                  </div>
+                </div>
+                <div class="analysis-executive-list" id="analysisExecutiveSummary"></div>
+              </section>
+            </div>
+          </section>
+        </section>
+
         <section class="view" data-view-panel="tv">
           <section class="tv-screen">
             <div class="tv-heading">
@@ -930,6 +991,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="/app.js?v=20260630-login-bundle"></script>
+    <script type="module" src="/app.js?v=20260702-gestao-analises"></script>
   </body>
 </html>

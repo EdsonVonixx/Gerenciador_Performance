@@ -3093,7 +3093,7 @@ function renderNavigation() {
     appShell.classList.toggle("treatments-mode", currentView === "treatments");
     appShell.dataset.activeView = currentView;
   }
-  const consolidatedManagementViews = ["tv", "treatments"];
+  const consolidatedManagementViews = ["tv", "treatments", "analyses"];
   qsa(".management-only").forEach((item) => item.classList.toggle("hidden", !isManagement()));
   qsa(".operational-only").forEach((item) => item.classList.toggle("hidden", isManagement()));
   qsa(".chemical-only").forEach((item) => item.classList.add("hidden"));
@@ -3125,7 +3125,7 @@ function renderUser() {
   }
   qs("#userName").textContent = currentUser.label;
   qs("#topDepartment").textContent =
-    isManagement() && (currentView === "tv" || currentView === "treatments")
+    isManagement() && (currentView === "tv" || currentView === "treatments" || currentView === "analyses")
       ? "Gestão | Todos os departamentos"
       : isManagement()
         ? `Gestão | Visualizando ${dept.label}`
@@ -4977,6 +4977,373 @@ function renderManagementTreatments() {
     .join("");
 }
 
+function isOperationalStatus(status) {
+  return status === "success" || status === "warn" || status === "danger";
+}
+
+function getStatusExecutiveLabel(status) {
+  if (status === "success") return "Na meta";
+  if (status === "warn") return "Atenção";
+  if (status === "danger") return "Crítico";
+  return statusLabel[status] || "Sem dados";
+}
+
+function getStatusScore(status) {
+  if (status === "success") return 100;
+  if (status === "warn") return 78;
+  if (status === "danger") return 45;
+  return null;
+}
+
+function getAnalysisToneByScore(score) {
+  if (score === null || score === undefined || !Number.isFinite(Number(score))) return "neutral";
+  if (score >= 90) return "success";
+  if (score >= 70) return "warn";
+  return "danger";
+}
+
+function getOperationalIndicatorRows() {
+  return operationalDepartmentKeys.flatMap((departmentKey) => {
+    const department = departments[departmentKey];
+    return department.indicators.map((indicator) => {
+      const accumulatedValue = getIndicatorAccumulatedValue(indicator, department);
+      const status = getStatus(indicator, department, accumulatedValue);
+      return {
+        departmentKey,
+        department,
+        departmentLabel: department.label,
+        indicator,
+        accumulatedValue,
+        status,
+      };
+    });
+  });
+}
+
+function getDepartmentAnalysisStats(departmentKey) {
+  const department = departments[departmentKey];
+  const rows = department.indicators.map((indicator) => {
+    const accumulatedValue = getIndicatorAccumulatedValue(indicator, department);
+    const status = getStatus(indicator, department, accumulatedValue);
+    return { indicator, accumulatedValue, status };
+  });
+  const countedRows = rows.filter((row) => isOperationalStatus(row.status));
+  const score =
+    countedRows.length > 0
+      ? countedRows.reduce((sum, row) => sum + getStatusScore(row.status), 0) / countedRows.length
+      : null;
+  const counts = rows.reduce(
+    (summary, row) => {
+      summary[row.status] += 1;
+      return summary;
+    },
+    { success: 0, warn: 0, danger: 0, tracking: 0, neutral: 0 },
+  );
+
+  return {
+    departmentKey,
+    department,
+    label: department.label,
+    rows,
+    countedRows,
+    counts,
+    score,
+    tone: getAnalysisToneByScore(score),
+  };
+}
+
+function getIndicatorRiskWeight(row) {
+  if (row.status === "danger") return 3;
+  if (row.status === "warn") return 2;
+  if (row.status === "success") return 1;
+  return 0;
+}
+
+function getIndicatorGap(row) {
+  const { indicator, accumulatedValue } = row;
+  if (!Number.isFinite(Number(accumulatedValue)) || !Number.isFinite(Number(indicator.target))) return 0;
+  const value = Number(accumulatedValue);
+  const target = Number(indicator.target);
+  if (target === 0) return value === 0 ? 0 : Math.abs(value);
+  if (indicator.goal === "higher") return Math.max(0, (target - value) / Math.abs(target));
+  return Math.max(0, (value - target) / Math.abs(target));
+}
+
+function getMonthKey(dateValue) {
+  const date = toDateOrNull(dateValue);
+  if (!date) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatMonthLabel(monthKey) {
+  const [year, month] = monthKey.split("-");
+  if (!year || !month) return monthKey;
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  const monthLabel = date.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+  return `${monthLabel}/${String(year).slice(-2)}`;
+}
+
+function getMonthlyAnalysisData() {
+  const buckets = new Map();
+
+  operationalDepartmentKeys.forEach((departmentKey) => {
+    const department = departments[departmentKey];
+    department.indicators.forEach((indicator) => {
+      if (indicator.goal === "tracking" || indicator.target === null || indicator.target === undefined) return;
+      getIndicatorHistory(indicator, department).forEach((entry) => {
+        const monthKey = getMonthKey(entry.date);
+        if (!monthKey || !Number.isFinite(Number(entry.value))) return;
+        const status = getStatus(indicator, department, Number(entry.value));
+        if (!isOperationalStatus(status)) return;
+        if (!buckets.has(monthKey)) buckets.set(monthKey, []);
+        buckets.get(monthKey).push(getStatusScore(status));
+      });
+    });
+  });
+
+  return Array.from(buckets.entries())
+    .map(([monthKey, scores]) => ({
+      monthKey,
+      label: formatMonthLabel(monthKey),
+      value: scores.reduce((sum, score) => sum + score, 0) / scores.length,
+    }))
+    .sort((left, right) => left.monthKey.localeCompare(right.monthKey))
+    .slice(-7);
+}
+
+function drawAnalysisMonthlyChart(canvas, data) {
+  if (!canvas) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(320, Math.round(rect.width || 720));
+  const height = Math.max(240, Math.round(rect.height || 300));
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const renderWidth = Math.round(width * dpr);
+  const renderHeight = Math.round(height * dpr);
+
+  if (canvas.width !== renderWidth || canvas.height !== renderHeight) {
+    canvas.width = renderWidth;
+    canvas.height = renderHeight;
+  }
+
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = "#101a29";
+  ctx.fillRect(0, 0, width, height);
+
+  if (!Array.isArray(data) || data.length === 0) {
+    ctx.fillStyle = "#aebdd2";
+    ctx.font = "800 13px Roboto, Inter, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Sem histórico mensal suficiente para análise.", width / 2, height / 2);
+    return;
+  }
+
+  const padding = { top: 26, right: 20, bottom: 38, left: 42 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const yFor = (value) => padding.top + ((100 - Number(value)) / 100) * plotHeight;
+  const xStep = data.length > 1 ? plotWidth / (data.length - 1) : 0;
+  const points = data.map((item, index) => ({
+    x: padding.left + xStep * index,
+    y: yFor(item.value),
+    item,
+  }));
+
+  ctx.strokeStyle = "#263552";
+  ctx.lineWidth = 1;
+  ctx.font = "700 10px Roboto, Inter, system-ui, sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  [0, 25, 50, 75, 100].forEach((tick) => {
+    const y = yFor(tick);
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(width - padding.right, y);
+    ctx.stroke();
+    ctx.fillStyle = "#8999b4";
+    ctx.fillText(`${tick}%`, padding.left - 8, y);
+  });
+
+  const gradient = ctx.createLinearGradient(padding.left, 0, width - padding.right, 0);
+  gradient.addColorStop(0, "#18b8ff");
+  gradient.addColorStop(0.6, "#36d39e");
+  gradient.addColorStop(1, "#f1c453");
+
+  ctx.beginPath();
+  points.forEach((point, index) => {
+    if (index === 0) ctx.moveTo(point.x, point.y);
+    else ctx.lineTo(point.x, point.y);
+  });
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.stroke();
+
+  points.forEach((point) => {
+    const tone = getAnalysisToneByScore(point.item.value);
+    ctx.fillStyle = "#101a29";
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = statusColor[tone] || statusColor.neutral;
+    ctx.lineWidth = 2.4;
+    ctx.stroke();
+
+    ctx.fillStyle = "#eef5ff";
+    ctx.font = "800 10.5px Roboto, Inter, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(`${formatNumber(point.item.value)}%`, point.x, point.y - 10);
+
+    ctx.fillStyle = "#9aacc7";
+    ctx.textBaseline = "top";
+    ctx.fillText(point.item.label, point.x, height - padding.bottom + 14);
+  });
+}
+
+function renderAnalysisProfileIcon(profileKey, accentColor = "#4d7dff") {
+  const iconKey = profileAvatarIcons[profileKey] ? profileKey : "default";
+  return `<span class="analysis-profile-icon" style="--icon-accent: ${escapeAttribute(accentColor)}" aria-hidden="true">${profileAvatarIcons[iconKey]}</span>`;
+}
+
+function renderAnalyses() {
+  const summaryTarget = qs("#analysisSummary");
+  if (!summaryTarget) return;
+
+  const rows = getOperationalIndicatorRows();
+  const countedRows = rows.filter((row) => isOperationalStatus(row.status));
+  const successCount = rows.filter((row) => row.status === "success").length;
+  const dangerCount = rows.filter((row) => row.status === "danger").length;
+  const pendingRecords = getConsolidatedManagementRecords().filter((row) => !isRecordConcluded(row.record));
+  const periodLabel = getActivePeriodLabel();
+
+  qs("#analysisPeriod").textContent = periodLabel;
+  summaryTarget.innerHTML = `
+    <article class="analysis-summary-card" style="--summary-color: #4d7dff">
+      <span>Indicadores</span>
+      <strong>${rows.length}</strong>
+      <small>Total monitorado na logística</small>
+    </article>
+    <article class="analysis-summary-card" style="--summary-color: ${statusColor.success}">
+      <span>Na meta</span>
+      <strong>${successCount}</strong>
+      <small>${countedRows.length ? formatNumber((successCount / countedRows.length) * 100) : 0}% dos indicadores avaliados</small>
+    </article>
+    <article class="analysis-summary-card" style="--summary-color: ${statusColor.danger}">
+      <span>Críticos</span>
+      <strong>${dangerCount}</strong>
+      <small>${countedRows.length ? formatNumber((dangerCount / countedRows.length) * 100) : 0}% pedem ação imediata</small>
+    </article>
+    <article class="analysis-summary-card" style="--summary-color: ${statusColor.warn}">
+      <span>Pendentes</span>
+      <strong>${pendingRecords.length}</strong>
+      <small>Tratativas e planos em andamento</small>
+    </article>
+  `;
+
+  const departmentStats = operationalDepartmentKeys.map(getDepartmentAnalysisStats);
+  qs("#analysisDepartmentBars").innerHTML = departmentStats
+    .map((item) => {
+      const score = Number.isFinite(Number(item.score)) ? item.score : 0;
+      const toneColor = statusColor[item.tone] || statusColor.neutral;
+      return `
+        <div class="analysis-department-row">
+          <span>${escapeHtml(item.label)}</span>
+          <div class="analysis-bar-track" aria-hidden="true">
+            <div class="analysis-bar-fill" style="--bar-value: ${Math.max(0, Math.min(100, score))}%; --bar-color: ${toneColor}"></div>
+          </div>
+          <strong class="analysis-score" style="--bar-color: ${toneColor}">${
+            item.countedRows.length ? `${formatNumber(score)}%` : "Sem dados"
+          }</strong>
+        </div>
+      `;
+    })
+    .join("");
+
+  const criticalRows = rows
+    .filter((row) => row.status === "danger" || row.status === "warn")
+    .sort((left, right) => {
+      const riskDelta = getIndicatorRiskWeight(right) - getIndicatorRiskWeight(left);
+      if (riskDelta !== 0) return riskDelta;
+      return getIndicatorGap(right) - getIndicatorGap(left);
+    });
+  qs("#analysisCriticalCount").textContent = String(dangerCount);
+  qs("#analysisCriticalList").innerHTML =
+    criticalRows.length > 0
+      ? criticalRows
+          .slice(0, 6)
+          .map((row, index) => {
+            const color = statusColor[row.status] || statusColor.warn;
+            return `
+              <article class="analysis-critical-item">
+                ${renderAnalysisProfileIcon(row.departmentKey, row.department.color)}
+                <div>
+                  <strong>${escapeHtml(row.indicator.name)}</strong>
+                  <span>${escapeHtml(row.departmentLabel)} · ${formatMetric(row.indicator, row.accumulatedValue)} de ${escapeHtml(
+                    formatTarget(row.indicator),
+                  )}</span>
+                </div>
+                <span class="analysis-status" style="--status-color: ${color}">${getStatusExecutiveLabel(row.status)}</span>
+              </article>
+            `;
+          })
+          .join("")
+      : `<div class="analysis-empty">Nenhum indicador crítico ou em atenção no período.</div>`;
+
+  const departmentsWithDanger = departmentStats.filter((item) => item.counts.danger > 0);
+  const departmentsWithWarning = departmentStats.filter((item) => item.counts.warn > 0);
+  const weakestDepartment = [...departmentStats]
+    .filter((item) => item.countedRows.length > 0)
+    .sort((left, right) => left.score - right.score)[0];
+  const bestDepartment = [...departmentStats]
+    .filter((item) => item.countedRows.length > 0)
+    .sort((left, right) => right.score - left.score)[0];
+  const warningIconDepartment = departmentsWithWarning[0] || weakestDepartment;
+  const dangerIconDepartment = departmentsWithDanger[0] || weakestDepartment;
+
+  qs("#analysisExecutiveSummary").innerHTML = `
+    <article class="analysis-executive-item">
+      ${renderAnalysisProfileIcon(warningIconDepartment?.departmentKey || "gestao", warningIconDepartment?.department.color || statusColor.warn)}
+      <div>
+        <strong>${departmentsWithWarning.length} departamentos em atenção</strong>
+        <span>Monitore indicadores próximos ao limite operacional.</span>
+      </div>
+    </article>
+    <article class="analysis-executive-item">
+      ${renderAnalysisProfileIcon(dangerIconDepartment?.departmentKey || "gestao", dangerIconDepartment?.department.color || statusColor.danger)}
+      <div>
+        <strong>${departmentsWithDanger.length} departamentos críticos</strong>
+        <span>Priorize tratativas com maior impacto na operação.</span>
+      </div>
+    </article>
+    <article class="analysis-executive-item">
+      ${renderAnalysisProfileIcon("gestao", statusColor.tracking)}
+      <div>
+        <strong>${pendingRecords.length} planos e evidências em andamento</strong>
+        <span>Consolidação de todos os perfis operacionais.</span>
+      </div>
+    </article>
+    <article class="analysis-executive-item">
+      ${renderAnalysisProfileIcon(bestDepartment?.departmentKey || "gestao", bestDepartment?.department.color || statusColor.success)}
+      <div>
+        <strong>${bestDepartment ? `${bestDepartment.label} lidera a performance` : "Performance em formação"}</strong>
+        <span>${
+          weakestDepartment
+            ? `${weakestDepartment.label} exige acompanhamento mais próximo.`
+            : "Cadastre lançamentos para gerar comparativos executivos."
+        }</span>
+      </div>
+    </article>
+  `;
+
+  drawAnalysisMonthlyChart(qs("#analysisMonthlyChart"), getMonthlyAnalysisData());
+}
+
 function hasFiveSScore(entry) {
   return entry?.score !== null && entry?.score !== undefined && entry?.score !== "" && Number.isFinite(Number(entry.score));
 }
@@ -5301,22 +5668,28 @@ function renderTv() {
         .map((indicator) => {
           const accumulatedValue = getIndicatorAccumulatedValue(indicator, department);
           const status = getStatus(indicator, department, accumulatedValue);
+          const showTvStatus = isOperationalStatus(status);
+          const showTargetMetric = indicator.goal !== "tracking" && indicator.target !== null && indicator.target !== undefined;
 
           return `
             <article class="tv-indicator-card ${status}">
               <header>
                 <h4>${escapeHtml(indicator.name)}</h4>
-                <span class="pill ${status}">${escapeHtml(indicatorStatusLabel(indicator, department))}</span>
+                ${showTvStatus ? `<span class="pill ${status}">${escapeHtml(getStatusExecutiveLabel(status))}</span>` : ""}
               </header>
               <div class="tv-metrics">
                 <div>
                   <span>Acumulado</span>
                   <strong>${formatMetric(indicator, accumulatedValue)}</strong>
                 </div>
-                <div>
-                  <span>${indicator.goal === "tracking" ? "Status" : "Meta"}</span>
-                  <strong>${escapeHtml(formatTargetValue(indicator))}</strong>
-                </div>
+                ${
+                  showTargetMetric
+                    ? `<div>
+                        <span>Meta</span>
+                        <strong>${escapeHtml(formatTargetValue(indicator))}</strong>
+                      </div>`
+                    : ""
+                }
               </div>
             </article>
           `;
@@ -5331,8 +5704,6 @@ function renderTv() {
               <span><i class="status-dot ok"></i>${departmentCounts.success} na meta</span>
               <span><i class="status-dot warn"></i>${departmentCounts.warn} em atenção</span>
               <span><i class="status-dot danger"></i>${departmentCounts.danger} críticos</span>
-              <span><i class="status-dot tracking"></i>${departmentCounts.tracking} acompanhamento</span>
-              <span><i class="status-dot neutral"></i>${departmentCounts.neutral} sem dados</span>
             </div>
           </header>
           <div class="tv-kanban-stack">${indicatorCards}</div>
@@ -5363,6 +5734,7 @@ function renderAll() {
   renderActions();
   renderManagementTreatments();
   renderFiveS();
+  renderAnalyses();
   renderTv();
 }
 
@@ -5388,6 +5760,7 @@ function applyPeriodFilter(nextPeriod, options = {}) {
   renderActions();
   renderManagementTreatments();
   renderFiveS();
+  renderAnalyses();
   renderTv();
 
   if (showFeedback && periodSelect) {
@@ -5407,7 +5780,7 @@ function setSidebarOpen(nextOpen) {
 
 function setView(view) {
   if (!currentUser) return;
-  if (!isManagement() && (view === "tv" || view === "treatments")) return;
+  if (!isManagement() && (view === "tv" || view === "treatments" || view === "analyses")) return;
   if (view === "fiveS") return;
   if (isManagement() && (view === "launches" || view === "actions")) view = "dashboard";
 
@@ -5426,6 +5799,7 @@ function setView(view) {
   setSidebarOpen(false);
   if (view === "dashboard") renderLineCharts();
   if (view === "treatments") renderManagementTreatments();
+  if (view === "analyses") renderAnalyses();
   if (view === "fiveS") renderFiveS();
   if (view === "tv") renderTv();
 }
