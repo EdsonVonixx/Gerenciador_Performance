@@ -3136,6 +3136,10 @@ function renderUser() {
 
 function renderIndicatorOptions() {
   const departmentIndicatorNames = currentDepartment().indicators.map((indicator) => indicator.name);
+  const launchSelect = qs("#launchIndicator");
+  const actionSelect = qs("#actionIndicator");
+  const currentLaunchIndicator = launchSelect?.value || "";
+  const currentActionIndicator = actionSelect?.value || "";
   const launchOptions = departmentIndicatorNames
     .map((name) => `<option>${escapeHtml(name)}</option>`)
     .join("");
@@ -3146,8 +3150,21 @@ function renderIndicatorOptions() {
   const actionOptions = uniqueIndicatorNames(actionIndicatorNames)
     .map((name) => `<option>${escapeHtml(name)}</option>`)
     .join("");
-  qs("#launchIndicator").innerHTML = launchOptions;
-  qs("#actionIndicator").innerHTML = actionOptions;
+
+  if (launchSelect) {
+    launchSelect.innerHTML = launchOptions;
+    if (departmentIndicatorNames.includes(currentLaunchIndicator)) {
+      launchSelect.value = currentLaunchIndicator;
+    }
+  }
+
+  if (actionSelect) {
+    actionSelect.innerHTML = actionOptions;
+    if (actionIndicatorNames.includes(currentActionIndicator)) {
+      actionSelect.value = currentActionIndicator;
+    }
+  }
+
   syncLaunchFormByIndicator();
 }
 
