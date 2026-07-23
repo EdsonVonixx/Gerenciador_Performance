@@ -115,7 +115,7 @@ const departments = {
       { name: "Aderência ao Estoque Mínimo", unit: "%", target: 95, goal: "higher", targetLabel: "Meta" },
       { name: "Cumprimento do Plano de Inventário", unit: "%", target: 100, goal: "higher", targetLabel: "Meta" },
       { name: "Estoque Slow Mover (Maior que 90 dias)", unit: "%", target: 10, goal: "lower", targetLabel: "Meta" },
-      { name: "Produtividade Individual (Uso & Consumo)", unit: "%", target: null, goal: "tracking", statusText: "Acompanhamento" },
+      { name: "Produtividade Individual (Uso & Consumo)", unit: "atividades/colab", target: null, goal: "tracking", statusText: "Acompanhamento" },
     ],
     launches: [],
     records: [],
@@ -129,7 +129,7 @@ const departments = {
       { name: "Eficiência de Recebimento", unit: "%", target: 95, goal: "higher", targetLabel: "Meta" },
       { name: "Tempo Médio de Recebimento", unit: "min", target: 50, goal: "lower", targetLabel: "Até" },
       { name: "Erros de Armazenagem e Movimentação", unit: "%", target: 3, goal: "lower", targetLabel: "Meta" },
-      { name: "Produtividade Individual", unit: "%", target: null, goal: "tracking", statusText: "Acompanhamento" },
+      { name: "Produtividade Individual", unit: "atividades/colab", target: null, goal: "tracking", statusText: "Acompanhamento" },
     ],
     launches: [],
     records: [],
@@ -2271,9 +2271,10 @@ launchFormulaDefinitions.recebimento_erros_armazenagem = {
 
 launchFormulaDefinitions.recebimento_produtividade_individual = {
   title: "Cálculo de Produtividade Individual",
-  hint: "Produtividade (%) = (Atividades concluídas no turno / Total de colaboradores) x 100.",
-  fields: ["completedShiftActivities", "collaboratorCount"],
-  allowNegative: false,
+  hint: "Produtividade = Atividades concluídas no turno / Total de colaboradores.",
+fields: ["completedShiftActivities", "collaboratorCount"],
+allowNegative: false,
+resultSuffix: " atividades/colab",
 };
 
 launchFormulaDefinitions.ruptura_estocaveis = {
@@ -2348,9 +2349,10 @@ launchFormulaDefinitions.estoque_slow_mover = {
 
 launchFormulaDefinitions.produtividade_individual = {
   title: "Cálculo de Produtividade Individual (Uso & Consumo)",
-  hint: "Produtividade (%) = (Atividades concluídas no turno / Total de colaboradores) x 100.",
-  fields: ["completedShiftActivities", "collaboratorCount"],
-  allowNegative: false,
+  hint: "Produtividade = Atividades concluídas no turno / Total de colaboradores.",
+fields: ["completedShiftActivities", "collaboratorCount"],
+allowNegative: false,
+resultSuffix: " atividades/colab",
 };
 
 launchFormulaDefinitions.estoque_produtividade_individual_contagens = {
@@ -2632,7 +2634,7 @@ function computeLaunchFormulaValue(formulaType) {
     if (!Number.isFinite(completedShiftActivities) || !Number.isFinite(collaboratorCount) || collaboratorCount <= 0) {
       return NaN;
     }
-    return (completedShiftActivities / collaboratorCount) * 100;
+    return completedShiftActivities / collaboratorCount;
   }
 
   if (formulaType === "ruptura_estocaveis") {
@@ -2721,7 +2723,7 @@ function computeLaunchFormulaValue(formulaType) {
     if (!Number.isFinite(completedShiftActivities) || !Number.isFinite(collaboratorCount) || collaboratorCount <= 0) {
       return NaN;
     }
-    return (completedShiftActivities / collaboratorCount) * 100;
+    return completedShiftActivities / collaboratorCount;
   }
 
   if (formulaType === "estoque_produtividade_individual_contagens") {
