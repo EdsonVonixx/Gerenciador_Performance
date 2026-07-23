@@ -1235,6 +1235,7 @@ function getCardDetails(indicator) {
    const totalField = (rows, field) => rows.reduce((sum, item) => sum + Number(item[field]), 0);
   const averageField = (rows, field) => totalField(rows, field) / rows.length;
   const sumField = averageField;
+    const formatNumber = formatIntegerDisplay;
 
   if (indicatorKey.includes("capacidade") && indicatorKey.includes("recebimento")) {
     const rows = rowsWithFields(["dailyReceipts", "plannedReceiptCapacity"]);
