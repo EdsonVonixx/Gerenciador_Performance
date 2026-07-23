@@ -1232,8 +1232,9 @@ function getCardDetails(indicator) {
   const indicatorKey = normalizeTextKey(indicator.name);
   const rowsWithFields = (fields) =>
     history.filter((item) => fields.every((field) => Number.isFinite(Number(item[field]))));
-  const sumField = (rows, field) => rows.reduce((sum, item) => sum + Number(item[field]), 0);
-  const averageField = (rows, field) => sumField(rows, field) / rows.length;
+   const totalField = (rows, field) => rows.reduce((sum, item) => sum + Number(item[field]), 0);
+  const averageField = (rows, field) => totalField(rows, field) / rows.length;
+  const sumField = averageField;
 
   if (indicatorKey.includes("capacidade") && indicatorKey.includes("recebimento")) {
     const rows = rowsWithFields(["dailyReceipts", "plannedReceiptCapacity"]);
