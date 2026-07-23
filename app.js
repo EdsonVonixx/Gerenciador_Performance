@@ -2413,23 +2413,15 @@ launchFormulaDefinitions.perdas_inventario = {
 };
 
 launchFormulaDefinitions.secos_perdas_picks = {
-  title: "Cálculo de Índice de Perdas por Ajuste no Picks Secos",
+  title: "Cálculo de Índice de Perdas por Ajuste nos Picks Secos",
   hint: "Índice de perdas (%) = (Valor total ajustado / Valor total do estoque) x 100.",
   fields: ["adjustedValue", "totalStockValue"],
   allowNegative: false,
 };
 
-launchFormulaDefinitions.secos_ruptura_embalagens = {
-  title: "Cálculo de Índice de Ruptura de Embalagens na Produção",
-  hint: "Ruptura = quantidade de OPs impactadas no período.",
-  fields: ["impactedOps"],
-  allowNegative: false,
-  resultSuffix: " OPs",
-};
-
 launchFormulaDefinitions.secos_ops_atendidas_erradas = {
   title: "Cálculo de Índice de OPs Atendidas Erradas",
-  hint: "Índice (%) = (OPs atendidas erradas / Total de OPs solicitadas) x 100.",
+  hint: "Índice (%) = (OPs com erro / Total de OPs solicitadas) x 100.",
   fields: ["wrongOps", "requestedOps"],
   allowNegative: false,
 };
