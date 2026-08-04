@@ -97,42 +97,46 @@
             <h1 id="viewTitle">Painel Geral</h1>
           </div>
           <div class="topbar-actions">
-            <label class="select-label management-only hidden" id="departmentSelectWrap">
-              Departamento
-              <select id="departmentSelect"></select>
-            </label>
-            <label class="select-label">
-              Período
-              <select id="periodSelect">
-                <option value="dia">Hoje</option>
-                <option value="semana" selected>Semana</option>
-                <option value="mes">Mês</option>
-                <option value="trimestre">Trimestre</option>
-              </select>
-            </label>
-            <label class="select-label month-filter hidden" id="monthFilterWrap">
-              Mês
-              <select id="monthFilter" aria-label="Selecionar mês">
-                <option value="01">Jan</option>
-                <option value="02">Fev</option>
-                <option value="03">Mar</option>
-                <option value="04">Abr</option>
-                <option value="05">Mai</option>
-                <option value="06">Jun</option>
-                <option value="07">Jul</option>
-                <option value="08">Ago</option>
-                <option value="09">Set</option>
-                <option value="10">Out</option>
-                <option value="11">Nov</option>
-                <option value="12">Dez</option>
-              </select>
-            </label>
-            <label class="select-label year-filter hidden" id="yearFilterWrap">
-              Ano
-              <select id="yearFilter" aria-label="Selecionar ano"></select>
-            </label>
-            <button class="primary-button" id="refreshButton" type="button">Atualizar</button>
-          </div>
+  <label class="select-label management-only hidden" id="departmentSelectWrap">
+    Departamento
+    <select id="departmentSelect"></select>
+  </label>
+
+  <label class="select-label">
+    Período
+    <select id="periodSelect">
+      <option value="dia">Hoje</option>
+      <option value="semana" selected>Semana</option>
+      <option value="mes">Mês</option>
+      <option value="trimestre">Trimestre</option>
+    </select>
+  </label>
+
+  <label class="select-label month-filter hidden" id="monthFilterWrap">
+    Mês
+    <select id="monthFilter" aria-label="Selecionar mês">
+      <option value="01">Jan</option>
+      <option value="02">Fev</option>
+      <option value="03">Mar</option>
+      <option value="04">Abr</option>
+      <option value="05">Mai</option>
+      <option value="06">Jun</option>
+      <option value="07">Jul</option>
+      <option value="08">Ago</option>
+      <option value="09">Set</option>
+      <option value="10">Out</option>
+      <option value="11">Nov</option>
+      <option value="12">Dez</option>
+    </select>
+  </label>
+
+  <label class="select-label year-filter hidden" id="yearFilterWrap">
+    Ano
+    <select id="yearFilter" aria-label="Selecionar ano"></select>
+  </label>
+
+  <button class="primary-button" id="refreshButton" type="button">Atualizar</button>
+</div>
         </header>
 
         <section class="view active" data-view-panel="dashboard">
@@ -1012,6 +1016,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-     <script type="module" src="/app.js?v=20260804-month-select"></script>
+     <script type="module" src="/app.js?v=20260804-month-filter"></script>
   </body>
 </html>
