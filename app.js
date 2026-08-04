@@ -3228,16 +3228,6 @@ function renderNavigation() {
 
   syncMonthFilterControl();
 }
-  }
-  const departmentSelectWrap = qs("#departmentSelectWrap");
-  if (departmentSelectWrap) {
-    departmentSelectWrap.classList.toggle("hidden", !isManagement() || consolidatedManagementViews.includes(currentView));
-  }
-  const departmentSelect = qs("#departmentSelect");
-  if (departmentSelect) {
-    departmentSelect.disabled = !isManagement() || consolidatedManagementViews.includes(currentView);
-  }
-}
 
 function renderUser() {
   const dept = currentDepartment();
@@ -6047,8 +6037,8 @@ function setupInteractions() {
     currentUser = null;
     selectedDepartmentKey = "almoxarifado";
     currentPeriod = "semana";
+    selectedMonthFilter = "";
     resetLaunchFormState();
-    resetActionFormState();
     resetColumnFilters();
     qs("#loginForm").reset();
     qs("#periodSelect").value = currentPeriod;
