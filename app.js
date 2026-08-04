@@ -1042,6 +1042,112 @@ function getInitials(name) {
 function getPeriodWindow() {
   return periodWindows[currentPeriod] || periodWindows.semana;
 }
+function isValidMonthFilter(value) {
+  return /^\d{4}-\d{2}$/.test(value || "");
+}
+
+function getMonthFilterValueFromDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getMonthBounds(monthValue) {
+  if (!isValidMonthFilter(monthValue)) return null;
+  const [year, month] = monthValue.split("-").map(Number);
+  return {
+    startDate: new Date(year, month - 1, 1),
+    endDate: new Date(year, month, 0),
+  };
+}
+
+function formatMonthFilterLabel(monthValue) {
+  if (!isValidMonthFilter(monthValue)) return "Mês";
+  const [year, month] = monthValue.split("-").map(Number);
+  const label = new Date(year, month - 1, 1).toLocaleDateString("pt-BR", {
+    month: "long",
+    year: "numeric",
+  });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function getDepartmentDateValues(department) {
+  const values = [];
+  if (!department) return values;
+
+  (department.indicators || []).forEach((indicator) => {
+    getIndicatorHistory(indicator, department).forEach((entry) => values.push(entry.date));
+  });
+  (department.launches || []).forEach((launch) => values.push(launch.date));
+  (department.records || []).forEach((record) => values.push(getRecordDate(record)));
+
+  return values;
+}
+
+function getPeriodContextDateValues() {
+  return getDepartmentDateValues(currentDepartment());
+}
+
+function ensureSelectedMonthFilter(values = getPeriodContextDateValues()) {
+  if (!isValidMonthFilter(selectedMonthFilter)) {
+    selectedMonthFilter = getMonthFilterValueFromDate(maxDateFromValues(values) || new Date());
+  }
+  return selectedMonthFilter;
+}
+
+function syncYearFilterOptions(yearFilter, values = getPeriodContextDateValues()) {
+  if (!yearFilter) return;
+
+  const years = Array.from(
+    new Set(
+      values
+        .map((value) => toDateOrNull(value))
+        .filter(Boolean)
+        .map((date) => String(date.getFullYear())),
+    ),
+  ).sort((left, right) => Number(right) - Number(left));
+
+  const selectedYear = isValidMonthFilter(selectedMonthFilter) ? selectedMonthFilter.slice(0, 4) : "";
+  if (selectedYear && !years.includes(selectedYear)) years.unshift(selectedYear);
+  if (years.length === 0) years.push(String(new Date().getFullYear()));
+
+  yearFilter.innerHTML = years.map((year) => `<option value="${year}">${year}</option>`).join("");
+}
+
+function setSelectedMonthFilterFromControls() {
+  const monthFilter = qs("#monthFilter");
+  const yearFilter = qs("#yearFilter");
+  const monthValue = monthFilter?.value || selectedMonthFilter.slice(5, 7);
+  const yearValue = yearFilter?.value || selectedMonthFilter.slice(0, 4);
+
+  if (!/^\d{4}$/.test(yearValue) || !/^(0[1-9]|1[0-2])$/.test(monthValue)) return false;
+
+  selectedMonthFilter = `${yearValue}-${monthValue}`;
+  return true;
+}
+
+function syncMonthFilterControl() {
+  const monthFilterWrap = qs("#monthFilterWrap");
+  const yearFilterWrap = qs("#yearFilterWrap");
+  const monthFilter = qs("#monthFilter");
+  const yearFilter = qs("#yearFilter");
+  const showMonthFilter = currentPeriod === "mes";
+
+  monthFilterWrap?.classList.toggle("hidden", !showMonthFilter);
+  yearFilterWrap?.classList.toggle("hidden", !showMonthFilter);
+
+  if (monthFilter) monthFilter.disabled = !showMonthFilter;
+  if (yearFilter) yearFilter.disabled = !showMonthFilter;
+
+  if (!showMonthFilter) return;
+
+  const monthValue = ensureSelectedMonthFilter();
+  const [year, month] = monthValue.split("-");
+
+  syncYearFilterOptions(yearFilter);
+
+  if (monthFilter) monthFilter.value = month;
+  if (yearFilter) yearFilter.value = year;
+}
 
 function getSelectedOptionLabel(selector, fallback) {
   const select = qs(selector);
@@ -1049,17 +1155,37 @@ function getSelectedOptionLabel(selector, fallback) {
 }
 
 function getActivePeriodLabel() {
+  if (currentPeriod === "mes") {
+    return formatMonthFilterLabel(ensureSelectedMonthFilter());
+  }
+
   const periodLabel = getSelectedOptionLabel("#periodSelect", "Período");
   return periodLabel;
 }
 
-function getDateFilterBounds(values = []) {
-  const referenceDate = maxDateFromValues(values);
-  if (!referenceDate) return null;
-  return {
-    startDate: datePeriodStart(referenceDate, getPeriodWindow()),
-    endDate: referenceDate,
-  };
+function applyPeriodFilter(nextPeriod, options = {}) {
+  if (!currentUser) return;
+
+  const showFeedback = options.showFeedback !== false;
+  const normalizedPeriod = Object.prototype.hasOwnProperty.call(periodWindows, nextPeriod) ? nextPeriod : "semana";
+
+  currentPeriod = normalizedPeriod;
+
+  if (currentPeriod === "mes") {
+    ensureSelectedMonthFilter();
+  }
+
+  const periodSelect = qs("#periodSelect");
+  if (periodSelect && periodSelect.value !== normalizedPeriod) {
+    periodSelect.value = normalizedPeriod;
+  }
+
+  syncMonthFilterControl();
+  renderAll();
+
+  if (showFeedback && periodSelect) {
+    showToast(`Período alterado para ${getActivePeriodLabel()}.`);
+  }
 }
 
 function formatDateLabel(value) {
@@ -3088,6 +3214,7 @@ function renderNavigation() {
   if (appShell) {
     appShell.classList.toggle("treatments-mode", currentView === "treatments");
     appShell.dataset.activeView = currentView;
+    syncMonthFilterControl();
   }
   const consolidatedManagementViews = ["tv", "treatments", "analyses"];
   qsa(".management-only").forEach((item) => item.classList.toggle("hidden", !isManagement()));
