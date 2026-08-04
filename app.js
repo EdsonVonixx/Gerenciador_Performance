@@ -1163,31 +1163,18 @@ function getActivePeriodLabel() {
   return periodLabel;
 }
 
-function applyPeriodFilter(nextPeriod, options = {}) {
-  if (!currentUser) return;
-
-  const showFeedback = options.showFeedback !== false;
-  const normalizedPeriod = Object.prototype.hasOwnProperty.call(periodWindows, nextPeriod) ? nextPeriod : "semana";
-
-  currentPeriod = normalizedPeriod;
-
+function getDateFilterBounds(values = []) {
   if (currentPeriod === "mes") {
-    ensureSelectedMonthFilter();
+    return getMonthBounds(ensureSelectedMonthFilter(values));
   }
 
-  const periodSelect = qs("#periodSelect");
-  if (periodSelect && periodSelect.value !== normalizedPeriod) {
-    periodSelect.value = normalizedPeriod;
-  }
-
-  syncMonthFilterControl();
-  renderAll();
-
-  if (showFeedback && periodSelect) {
-    showToast(`Período alterado para ${getActivePeriodLabel()}.`);
-  }
+  const referenceDate = maxDateFromValues(values);
+  if (!referenceDate) return null;
+  return {
+    startDate: datePeriodStart(referenceDate, getPeriodWindow()),
+    endDate: referenceDate,
+  };
 }
-
 function formatDateLabel(value) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const [year, month, day] = value.split("-");
@@ -3214,18 +3201,33 @@ function renderNavigation() {
   if (appShell) {
     appShell.classList.toggle("treatments-mode", currentView === "treatments");
     appShell.dataset.activeView = currentView;
-    syncMonthFilterControl();
   }
+
   const consolidatedManagementViews = ["tv", "treatments", "analyses"];
   qsa(".management-only").forEach((item) => item.classList.toggle("hidden", !isManagement()));
   qsa(".operational-only").forEach((item) => item.classList.toggle("hidden", isManagement()));
   qsa(".chemical-only").forEach((item) => item.classList.add("hidden"));
+
   const topbarActions = qs(".topbar-actions");
   if (topbarActions) {
     const hideTopbarActions = currentView === "treatments" || currentView === "fiveS";
     topbarActions.classList.toggle("hidden", hideTopbarActions);
     topbarActions.style.display = hideTopbarActions ? "none" : "";
     topbarActions.hidden = hideTopbarActions;
+  }
+
+  const departmentSelectWrap = qs("#departmentSelectWrap");
+  if (departmentSelectWrap) {
+    departmentSelectWrap.classList.toggle("hidden", !isManagement() || consolidatedManagementViews.includes(currentView));
+  }
+
+  const departmentSelect = qs("#departmentSelect");
+  if (departmentSelect) {
+    departmentSelect.disabled = !isManagement() || consolidatedManagementViews.includes(currentView);
+  }
+
+  syncMonthFilterControl();
+}
   }
   const departmentSelectWrap = qs("#departmentSelectWrap");
   if (departmentSelectWrap) {
@@ -5867,28 +5869,22 @@ function applyPeriodFilter(nextPeriod, options = {}) {
   const showFeedback = options.showFeedback !== false;
   const normalizedPeriod = Object.prototype.hasOwnProperty.call(periodWindows, nextPeriod) ? nextPeriod : "semana";
 
-  if (normalizedPeriod === currentPeriod) return;
-
   currentPeriod = normalizedPeriod;
+
+  if (currentPeriod === "mes") {
+    ensureSelectedMonthFilter();
+  }
+
   const periodSelect = qs("#periodSelect");
   if (periodSelect && periodSelect.value !== normalizedPeriod) {
     periodSelect.value = normalizedPeriod;
   }
 
-  renderSummary();
-  renderKpis();
-  renderLineCharts();
-  renderLaunches();
-  renderLaunchTable();
-  renderActions();
-  renderManagementTreatments();
-  renderFiveS();
-  renderAnalyses();
-  renderTv();
+  syncMonthFilterControl();
+  renderAll();
 
   if (showFeedback && periodSelect) {
-    const selectedLabel = periodSelect.options[periodSelect.selectedIndex]?.text || "Período";
-    showToast(`Período alterado para ${selectedLabel}.`);
+    showToast(`Período alterado para ${getActivePeriodLabel()}.`);
   }
 }
 
@@ -6080,6 +6076,22 @@ function setupInteractions() {
   };
   periodSelect.addEventListener("change", onPeriodChange);
   periodSelect.addEventListener("input", onPeriodChange);
+
+    const monthFilter = qs("#monthFilter");
+  const yearFilter = qs("#yearFilter");
+
+  const onMonthFilterChange = () => {
+    if (!setSelectedMonthFilterFromControls()) return;
+
+    currentPeriod = "mes";
+    periodSelect.value = currentPeriod;
+    syncMonthFilterControl();
+    renderAll();
+    showToast(`Mês alterado para ${formatMonthFilterLabel(selectedMonthFilter)}.`);
+  };
+
+  monthFilter?.addEventListener("change", onMonthFilterChange);
+  yearFilter?.addEventListener("change", onMonthFilterChange);
 
   qs("#departmentSelect").addEventListener("change", (event) => {
     if (!isManagement()) return;
