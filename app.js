@@ -370,6 +370,7 @@ let currentUser = null;
 let selectedDepartmentKey = "almoxarifado";
 let currentView = "dashboard";
 let currentPeriod = "semana";
+let selectedMonthFilter = "";
 let editingLaunchId = null;
 let editingRecordId = null;
 let launchIdCounter = 1;
