@@ -6406,7 +6406,9 @@ function setupInteractions() {
     }
   });
 
-    document.addEventListener("click", (event) => {
+  });
+
+  document.addEventListener("click", (event) => {
     const attachmentButton = event.target.closest("[data-attachment-record-id]");
     if (attachmentButton) {
       event.preventDefault();
@@ -6424,7 +6426,7 @@ function setupInteractions() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeAttachmentPreview();
   });
-
+  
   qsa("#actionTableFilters [data-action-filter]").forEach((input) => {
     const applyFilter = (event) => {
       const field = event.target.dataset.actionFilter;
