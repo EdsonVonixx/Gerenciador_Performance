@@ -432,6 +432,101 @@ function escapeAttribute(value) {
   return escapeHtml(value);
 }
 
+function readActionAttachments() {
+  try {
+    const rawAttachments = window.localStorage.getItem(actionAttachmentStorageKey);
+    if (!rawAttachments) return {};
+    const parsedAttachments = JSON.parse(rawAttachments);
+    return parsedAttachments && typeof parsedAttachments === "object" ? parsedAttachments : {};
+  } catch (error) {
+    console.warn("Não foi possível carregar os anexos locais.", error);
+    return {};
+  }
+}
+
+function writeActionAttachments(attachments) {
+  try {
+    window.localStorage.setItem(actionAttachmentStorageKey, JSON.stringify(attachments));
+    return true;
+  } catch (error) {
+    console.warn("Não foi possível salvar o anexo local.", error);
+    return false;
+  }
+}
+
+function removeActionAttachment(recordId) {
+  if (!recordId) return;
+  const attachments = readActionAttachments();
+  if (!attachments[recordId]) return;
+  delete attachments[recordId];
+  writeActionAttachments(attachments);
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "")));
+    reader.addEventListener("error", () => reject(reader.error || new Error("Falha ao ler arquivo.")));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function buildRecordFilePayload(recordId, file, existingRecord) {
+  if (!file || !file.name) {
+    return { file: existingRecord?.file || "" };
+  }
+
+  if (file.size > maxInlineAttachmentSize) {
+    removeActionAttachment(recordId);
+    showToast("Arquivo acima de 4 MB: nome salvo, visualização local indisponível.", "warn");
+    return { file: file.name };
+  }
+
+  try {
+    const dataUrl = await readFileAsDataUrl(file);
+    const attachments = readActionAttachments();
+    attachments[recordId] = {
+      name: file.name,
+      type: file.type || "",
+      size: file.size || 0,
+      dataUrl,
+      savedAt: new Date().toISOString(),
+    };
+    if (!writeActionAttachments(attachments)) {
+      showToast("Nome do arquivo salvo, mas a visualização local não foi armazenada.", "warn");
+    }
+  } catch (error) {
+    console.warn("Não foi possível preparar o arquivo para visualização.", error);
+    showToast("Nome do arquivo salvo, mas a visualização local falhou.", "warn");
+  }
+
+  return { file: file.name };
+}
+
+function getRecordAttachment(record) {
+  if (!record?.id || !record.file) return null;
+  const attachment = readActionAttachments()[record.id];
+  if (!attachment?.dataUrl) return null;
+  if (attachment.name && attachment.name !== record.file) return null;
+  return attachment;
+}
+
+function renderRecordAttachment(record) {
+  if (!record?.file) return "";
+  const attachment = getRecordAttachment(record);
+  const fileName = escapeHtml(record.file);
+
+  if (!attachment) {
+    return `<span class="record-file-name" title="Arquivo registrado sem visualização local">Arquivo: ${fileName}</span>`;
+  }
+
+  return `
+    <a class="record-file-link" href="${escapeAttribute(attachment.dataUrl)}" target="_blank" rel="noopener noreferrer">
+      Arquivo: ${fileName}
+    </a>
+  `;
+}
+
 const textEncodingReplacements = new Map([
   ["\u00c3\u0081", "Á"],
   ["\u00c3\u00a1", "á"],
@@ -4766,8 +4861,8 @@ function renderActionList() {
       const tone = getRecordTone(record);
       const recordDate = getRecordDate(record);
       return `
-        <article class="record-card">
-          <header>
+        <article class="record-card action-history-item">
+          <header class="action-history-header">
             <strong>${escapeHtml(record.type)}</strong>
             <div class="record-head-actions">
               <span class="pill ${tone}">${escapeHtml(record.status)}</span>
@@ -4775,13 +4870,13 @@ function renderActionList() {
               <button class="mini-action danger" data-record-action="delete" data-record-id="${escapeAttribute(record.id)}" type="button">Excluir</button>
             </div>
           </header>
-          <p><strong>${escapeHtml(record.indicator)}</strong></p>
-          <p>${escapeHtml(record.description)}</p>
-          <div class="record-meta">
+          <p class="action-history-indicator"><strong>${escapeHtml(record.indicator)}</strong></p>
+          <p class="action-history-description">${escapeHtml(record.description)}</p>
+          <div class="record-meta action-history-meta">
             <span>Registro ${recordDate ? formatDate(recordDate) : "-"}</span>
             <span>${escapeHtml(record.owner)}</span>
             <span>${record.dueDate ? `Prazo ${formatDate(record.dueDate)}` : "Sem prazo"}</span>
-            ${record.file ? `<span>${escapeHtml(record.file)}</span>` : ""}
+            ${renderRecordAttachment(record)}
           </div>
         </article>
       `;
@@ -4886,7 +4981,12 @@ function renderActionTable() {
             </select>
           </td>
           <td>${record.dueDate ? formatDate(record.dueDate) : "-"}</td>
-          <td>${escapeHtml(record.description || "-")}</td>
+          <td>
+          <div class="table-description-cell">
+            <span>${escapeHtml(record.description || "-")}</span>
+            ${renderRecordAttachment(record)}
+          </div>
+        </td>
         </tr>
       `;
     })
@@ -4928,16 +5028,17 @@ async function deleteRecord(recordId) {
     return;
   }
 
-  department.records = department.records.filter((item) => item.id !== recordId);
-  if (editingRecordId === recordId) {
-    qs("#actionForm").reset();
-    setDefaultDates();
-    resetActionFormState();
-  }
-  writePrototypeState();
-  renderAll();
-  setView(currentView);
-  showToast(remotePersistenceActive() ? "Registro excluído da base SQL." : "Registro excluído.");
+ department.records = department.records.filter((item) => item.id !== recordId);
+removeActionAttachment(recordId);
+if (editingRecordId === recordId) {
+  qs("#actionForm").reset();
+  setDefaultDates();
+  resetActionFormState();
+}
+writePrototypeState();
+renderAll();
+setView(currentView);
+showToast(remotePersistenceActive() ? "Registro excluído da base SQL." : "Registro excluído.", "success");
 }
 
 async function updateRecordStatus(recordId, nextStatus, departmentKey = selectedDepartmentKey) {
@@ -5914,11 +6015,18 @@ function setView(view) {
   if (view === "tv") renderTv();
 }
 
-function showToast(message) {
+function showToast(message, tone = "") {
   const toast = qs("#toast");
+  const normalizedTone =
+    tone ||
+    (String(message).startsWith("Falha") || String(message).startsWith("Não foi possível") ? "danger" : "success");
+
   toast.textContent = message;
-  toast.classList.add("show");
-  window.setTimeout(() => toast.classList.remove("show"), 2200);
+  toast.classList.remove("show", "success", "warn", "danger");
+  toast.classList.add(normalizedTone);
+  window.clearTimeout(showToast.hideTimer);
+  window.requestAnimationFrame(() => toast.classList.add("show"));
+  showToast.hideTimer = window.setTimeout(() => toast.classList.remove("show"), 2600);
 }
 
 function setDefaultDates() {
@@ -6329,18 +6437,18 @@ function setupInteractions() {
       : null;
     const status = normalizeRecordStatusLabel(data.get("status"));
     const recordId = editingRecordId || generateRecordId();
+    const filePayload = await buildRecordFilePayload(recordId, file, existingRecord);
     const nextRecord = {
-      id: recordId,
-      type,
-      indicator: String(data.get("indicator")),
-      owner: String(data.get("owner")),
-      dueDate: String(data.get("dueDate")),
-      recordDate: String(data.get("recordDate")),
-      status,
-      description: String(data.get("description")),
-      file: file && file.name ? file.name : existingRecord?.file || "",
-    };
-
+    id: recordId,
+    type,
+    indicator: String(data.get("indicator")),
+    owner: String(data.get("owner")),
+    dueDate: String(data.get("dueDate")),
+    recordDate: String(data.get("recordDate")),
+    status,
+    description: String(data.get("description")),
+    file: filePayload.file,
+};
     try {
       await persistSupabaseActionRecord(nextRecord, selectedDepartmentKey);
     } catch (error) {
@@ -6364,12 +6472,12 @@ function setupInteractions() {
     renderAll();
     setView("actions");
     showToast(
-      wasEditing
-        ? "Registro atualizado."
-        : remotePersistenceActive()
-          ? "Registro salvo na base SQL."
-          : "Registro vinculado ao indicador.",
-    );
+  wasEditing
+     ? "Registro editado."
+     : remotePersistenceActive()
+      ? "Registro incluído na base SQL."
+      : "Registro incluído.",
+);
   });
 }
 
