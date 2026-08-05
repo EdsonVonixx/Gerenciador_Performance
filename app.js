@@ -364,7 +364,8 @@ function ensureFiveSAuditRecordsMetadata() {
 }
 
 const prototypeStorageKey = "vpc-logistica-mvp-state-v3";
-const legacyPrototypeStorageKeys = ["vpc-logistica-mvp-state-v1", "vpc-logistica-mvp-state-v2"];
+const actionAttachmentStorageKey = "vpc-action-record-attachments-v1";
+const maxInlineAttachmentSize = 4 * 1024 * 1024;
 
 let currentUser = null;
 let selectedDepartmentKey = "almoxarifado";
