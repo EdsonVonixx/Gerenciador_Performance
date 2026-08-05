@@ -1059,6 +1059,10 @@ textarea:focus {
   font-size: 0.72rem;
 }
 
+.launch-history-card {
+  min-height: auto;
+}
+
 .action-history-item {
   gap: 7px;
   padding: 9px 10px;
@@ -1093,6 +1097,86 @@ textarea:focus {
 .table-description-cell {
   display: grid;
   gap: 5px;
+}
+
+.attachment-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(3, 9, 18, 0.78);
+  backdrop-filter: blur(6px);
+}
+
+.attachment-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(980px, 94vw);
+  max-height: 88vh;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.38);
+}
+
+.attachment-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.attachment-dialog-header h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.attachment-preview-body {
+  display: grid;
+  min-height: 320px;
+  overflow: auto;
+  padding: 18px;
+  background: #f8fafc;
+}
+
+.attachment-preview-media,
+.attachment-preview-frame {
+  width: 100%;
+  max-width: 100%;
+  min-height: 58vh;
+  margin: auto;
+  object-fit: contain;
+  background: #ffffff;
+  border: 1px solid #d8e1ef;
+  border-radius: 12px;
+}
+
+.attachment-preview-media {
+  height: auto;
+  max-height: 72vh;
+}
+
+.attachment-preview-frame {
+  height: 70vh;
+}
+
+.attachment-preview-empty {
+  display: grid;
+  place-items: center;
+  gap: 16px;
+  color: #243044;
+  text-align: center;
+}
+
+.attachment-download {
+  width: fit-content;
 }
 
 .data-form {
