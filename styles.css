@@ -922,18 +922,32 @@ textarea:focus {
   gap: 10px;
 }
 
-.activity-list {
-  max-height: min(58vh, 640px);
+.side-history-panel {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  min-height: 0;
+  max-height: calc(100vh - 188px);
+  overflow: hidden;
+}
+
+.activity-list,
+.action-list {
+  flex: 1;
+  min-height: 0;
+  max-height: min(64vh, 680px);
   padding-right: 4px;
   overflow-y: auto;
   scrollbar-width: thin;
 }
 
-.activity-list::-webkit-scrollbar {
+.activity-list::-webkit-scrollbar,
+.action-list::-webkit-scrollbar {
   width: 8px;
 }
 
-.activity-list::-webkit-scrollbar-thumb {
+.activity-list::-webkit-scrollbar-thumb,
+.action-list::-webkit-scrollbar-thumb {
   background: rgba(130, 146, 170, 0.44);
   border-radius: 999px;
 }
@@ -962,6 +976,19 @@ textarea:focus {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 800;
+}
+
+.record-file-link,
+.record-file-name {
+  color: #8fb6ff;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.record-file-link:hover {
+  color: #bcd4ff;
+  text-decoration: underline;
 }
 
 .launch-history-item {
@@ -1021,6 +1048,42 @@ textarea:focus {
   min-height: 24px;
   padding: 3px 8px;
   font-size: 0.72rem;
+}
+
+.action-history-item {
+  gap: 7px;
+  padding: 9px 10px;
+}
+
+.action-history-header {
+  align-items: center;
+}
+
+.action-history-header strong,
+.action-history-indicator strong {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ink);
+  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.action-history-description {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.action-history-meta {
+  row-gap: 4px;
+}
+
+.table-description-cell {
+  display: grid;
+  gap: 5px;
 }
 
 .data-form {
@@ -1694,6 +1757,24 @@ textarea:focus {
   font-weight: 800;
 }
 
+.toast.success {
+  color: #d9fff3;
+  background: #0f3b34;
+  border: 1px solid rgba(46, 213, 150, 0.38);
+}
+
+.toast.warn {
+  color: #fff3ce;
+  background: #453416;
+  border: 1px solid rgba(241, 196, 83, 0.42);
+}
+
+.toast.danger {
+  color: #ffe3e7;
+  background: #4b1f2a;
+  border: 1px solid rgba(255, 115, 133, 0.44);
+}
+
 .toast {
   position: fixed;
   right: 24px;
@@ -2284,6 +2365,24 @@ textarea:focus {
   color: #ebf2ff;
   background: #152031;
   border: 1px solid #2e3c53;
+}
+
+.toast.success {
+  color: #d9fff3;
+  background: #0f3b34;
+  border-color: rgba(46, 213, 150, 0.38);
+}
+
+.toast.warn {
+  color: #fff3ce;
+  background: #453416;
+  border-color: rgba(241, 196, 83, 0.42);
+}
+
+.toast.danger {
+  color: #ffe3e7;
+  background: #4b1f2a;
+  border-color: rgba(255, 115, 133, 0.44);
 }
 
 .five-s-panel {
