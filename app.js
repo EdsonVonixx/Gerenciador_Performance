@@ -5969,6 +5969,7 @@ function setupLogin() {
     currentUser = profile;
     selectedDepartmentKey = profile.departmentKey;
     currentPeriod = "semana";
+    selectedMonthFilter = "";
     qs("#loginError").textContent = "";
     qs("#loginScreen").classList.add("hidden");
     qs("#appShell").classList.remove("hidden");
