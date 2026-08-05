@@ -521,10 +521,75 @@ function renderRecordAttachment(record) {
   }
 
   return `
-    <a class="record-file-link" href="${escapeAttribute(attachment.dataUrl)}" target="_blank" rel="noopener noreferrer">
+    <button class="record-file-link" type="button" data-attachment-record-id="${escapeAttribute(record.id)}">
       Arquivo: ${fileName}
-    </a>
+    </button>
   `;
+}
+
+function findRecordById(recordId) {
+  for (const [departmentKey, department] of Object.entries(departments)) {
+    const record = department.records.find((item) => item.id === recordId);
+    if (record) return { departmentKey, record };
+  }
+  return null;
+}
+
+function closeAttachmentPreview() {
+  qs("#attachmentPreview")?.remove();
+}
+
+function renderAttachmentPreviewContent(attachment, fileName) {
+  const dataUrl = escapeAttribute(attachment.dataUrl);
+  const type = String(attachment.type || "").toLowerCase();
+
+  if (type.startsWith("image/")) {
+    return `<img class="attachment-preview-media" src="${dataUrl}" alt="${fileName}" />`;
+  }
+
+  if (type === "application/pdf") {
+    return `<iframe class="attachment-preview-frame" src="${dataUrl}" title="${fileName}"></iframe>`;
+  }
+
+  return `
+    <div class="attachment-preview-empty">
+      <p>Este tipo de arquivo não possui pré-visualização no navegador.</p>
+      <a class="primary-button attachment-download" href="${dataUrl}" download="${fileName}">Baixar arquivo</a>
+    </div>
+  `;
+}
+
+function openAttachmentPreview(recordId) {
+  const recordMatch = findRecordById(recordId);
+  const record = recordMatch?.record;
+  const attachment = record ? getRecordAttachment(record) : null;
+
+  if (!record || !attachment) {
+    showToast("Arquivo salvo apenas como nome. Pré-visualização indisponível.", "warn");
+    return;
+  }
+
+  const fileName = escapeHtml(record.file);
+  closeAttachmentPreview();
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `
+      <div class="attachment-modal" id="attachmentPreview" data-attachment-preview>
+        <section class="attachment-dialog" role="dialog" aria-modal="true" aria-label="Pré-visualização do arquivo">
+          <header class="attachment-dialog-header">
+            <div>
+              <p class="eyebrow">Arquivo de apoio</p>
+              <h2>${fileName}</h2>
+            </div>
+            <button class="mini-action" type="button" data-attachment-close>Fechar</button>
+          </header>
+          <div class="attachment-preview-body">
+            ${renderAttachmentPreviewContent(attachment, fileName)}
+          </div>
+        </section>
+      </div>
+    `,
+  );
 }
 
 const textEncodingReplacements = new Map([
@@ -3739,18 +3804,19 @@ function renderLaunches() {
     .map((launch) => {
       const comment = String(launch.comment || "").trim();
       return `
-        <article class="record-card launch-history-item">
-          <div class="launch-history-main">
-            <div class="launch-history-info">
-              <strong>${escapeHtml(launch.indicator)}</strong>
-              <span class="launch-history-meta">${formatDate(launch.date)} · ${escapeHtml(launch.shift)}</span>
-              ${comment ? `<p class="launch-history-comment">${escapeHtml(comment)}</p>` : ""}
-            </div>
-            <div class="record-head-actions launch-history-actions">
+        <article class="record-card action-history-item launch-history-card">
+          <header class="action-history-header">
+            <strong>${escapeHtml(launch.indicator)}</strong>
+            <div class="record-head-actions">
               <span class="pill neutral">${escapeHtml(launch.value)}</span>
               <button class="mini-action" data-launch-action="edit" data-launch-id="${escapeAttribute(launch.id)}" type="button">Editar</button>
               <button class="mini-action danger" data-launch-action="delete" data-launch-id="${escapeAttribute(launch.id)}" type="button">Excluir</button>
             </div>
+          </header>
+          <p class="action-history-description">${comment ? escapeHtml(comment) : "Sem observação registrada."}</p>
+          <div class="record-meta action-history-meta">
+            <span>Registro ${formatDate(launch.date)}</span>
+            <span>${escapeHtml(launch.shift)}</span>
           </div>
         </article>
       `;
@@ -6338,6 +6404,25 @@ function setupInteractions() {
     if (action === "delete") {
       deleteRecord(recordId);
     }
+  });
+
+    document.addEventListener("click", (event) => {
+    const attachmentButton = event.target.closest("[data-attachment-record-id]");
+    if (attachmentButton) {
+      event.preventDefault();
+      openAttachmentPreview(attachmentButton.dataset.attachmentRecordId);
+      return;
+    }
+
+    const closeButton = event.target.closest("[data-attachment-close]");
+    const previewBackdrop = event.target.closest("[data-attachment-preview]");
+    if (closeButton || (previewBackdrop && event.target === previewBackdrop)) {
+      closeAttachmentPreview();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeAttachmentPreview();
   });
 
   qsa("#actionTableFilters [data-action-filter]").forEach((input) => {
