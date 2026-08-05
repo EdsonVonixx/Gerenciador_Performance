@@ -986,6 +986,15 @@ textarea:focus {
   text-decoration: none;
 }
 
+.record-file-link {
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
 .record-file-link:hover {
   color: #bcd4ff;
   text-decoration: underline;
