@@ -1549,7 +1549,7 @@ function getCardDetails(indicator) {
     const rows = rowsWithFields(["releaseTotalHours", "releasedReceipts"]);
     if (rows.length > 0) {
       return [
-        ["Horas totais", `${formatNumber(sumField(rows, "releaseTotalHours"))} h`],
+        ["Horas trabalhadas", `${formatNumber(sumField(rows, "releaseTotalHours"))} h`],
         ["Total de recebimentos", formatNumber(sumField(rows, "releasedReceipts"))],
       ];
     }
@@ -2531,7 +2531,7 @@ launchFormulaDefinitions.recebimento_eficiencia = {
 
 launchFormulaDefinitions.recebimento_tempo_liberacao = {
   title: "Cálculo de Tempo Médio de Recebimento",
-  hint: "Tempo médio (min) = (Soma do tempo de liberação / Total de recebimentos) x 100.",
+  hint: "Tempo médio (min) = (Total de horas trabalhadas / Total de recebimentos) x 60.",
   fields: ["releaseTotalHours", "releasedReceipts"],
   allowNegative: false,
   resultSuffix: " min",
@@ -2891,7 +2891,7 @@ function computeLaunchFormulaValue(formulaType) {
     const releaseTotalHours = getLaunchFormulaFieldValue("releaseTotalHours");
     const releasedReceipts = getLaunchFormulaFieldValue("releasedReceipts");
     if (!Number.isFinite(releaseTotalHours) || !Number.isFinite(releasedReceipts) || releasedReceipts <= 0) return NaN;
-    return (releaseTotalHours / releasedReceipts) * 100;
+    return (releaseTotalHours / releasedReceipts) * 60;
   }
 
   if (formulaType === "recebimento_erros_armazenagem") {
@@ -4063,7 +4063,7 @@ function applyRecebimentoLaunchFormulaDetails(indicator, formulaType, payload) {
   if (formulaType === "recebimento_tempo_liberacao") {
     if (!Number.isFinite(payload.releaseTotalHours) || !Number.isFinite(payload.releasedReceipts)) return;
     indicator.details = [
-      ["Horas totais", `${formatNumber(payload.releaseTotalHours)} h`],
+      ["Horas trabalhadas", `${formatNumber(payload.releaseTotalHours)} h`],
       ["Total de recebimentos", formatNumber(payload.releasedReceipts)],
     ];
   }
