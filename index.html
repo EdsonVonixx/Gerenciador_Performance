@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Vonixx Performance Center | Logística</title>
-    <link rel="stylesheet" href="styles.css?v=20260626-compact-launches" />
+    <link rel="stylesheet" href="styles.css?v=20260827-tv-dashboard" />
   </head>
   <body>
     <section class="login-shell" id="loginScreen">
@@ -72,10 +72,6 @@
             <span class="nav-icon action-icon" aria-hidden="true"></span>
             Tratativas e Plano de Ação
           </button>
-          <button class="nav-item management-only hidden" data-view="analyses" type="button">
-            <span class="nav-icon analytics-icon" aria-hidden="true"></span>
-            Análises
-          </button>
           <button class="nav-item management-only hidden" data-view="tv" type="button">
             <span class="nav-icon tv-icon" aria-hidden="true"></span>
             TV Logística
@@ -97,46 +93,42 @@
             <h1 id="viewTitle">Painel Geral</h1>
           </div>
           <div class="topbar-actions">
-  <label class="select-label management-only hidden" id="departmentSelectWrap">
-    Departamento
-    <select id="departmentSelect"></select>
-  </label>
-
-  <label class="select-label">
-    Período
-    <select id="periodSelect">
-      <option value="dia">Hoje</option>
-      <option value="semana" selected>Semana</option>
-      <option value="mes">Mês</option>
-      <option value="trimestre">Trimestre</option>
-    </select>
-  </label>
-
-  <label class="select-label month-filter hidden" id="monthFilterWrap">
-    Mês
-    <select id="monthFilter" aria-label="Selecionar mês">
-      <option value="01">Jan</option>
-      <option value="02">Fev</option>
-      <option value="03">Mar</option>
-      <option value="04">Abr</option>
-      <option value="05">Mai</option>
-      <option value="06">Jun</option>
-      <option value="07">Jul</option>
-      <option value="08">Ago</option>
-      <option value="09">Set</option>
-      <option value="10">Out</option>
-      <option value="11">Nov</option>
-      <option value="12">Dez</option>
-    </select>
-  </label>
-
-  <label class="select-label year-filter hidden" id="yearFilterWrap">
-    Ano
-    <select id="yearFilter" aria-label="Selecionar ano"></select>
-  </label>
-
-  <button class="primary-button" id="refreshButton" type="button">Atualizar</button>
-</div>
+            <label class="select-label management-only hidden" id="departmentSelectWrap">
+              Departamento
+              <select id="departmentSelect"></select>
+            </label>
+            <label class="select-label">
+              Período
+              <select id="periodSelect">
+                <option value="dia">Hoje</option>
+                <option value="semana" selected>Semana</option>
+                <option value="mes">Mês</option>
+                <option value="trimestre">Trimestre</option>
+              </select>
+            </label>
+            <label class="select-label month-filter hidden" id="monthFilterWrap">
+              Mês
+              <select id="monthFilter" aria-label="Selecionar mês">
+                <option value="01">Jan</option>
+                <option value="02">Fev</option>
+                <option value="03">Mar</option>
+                <option value="04">Abr</option>
+                <option value="05">Mai</option>
+                <option value="06">Jun</option>
+                <option value="07">Jul</option>
+                <option value="08">Ago</option>
+                <option value="09">Set</option>
+                <option value="10">Out</option>
+                <option value="11">Nov</option>
+                <option value="12">Dez</option>
+              </select>
+            </label>
+            <label class="select-label year-filter hidden" id="yearFilterWrap">
+              Ano
+              <select id="yearFilter" aria-label="Selecionar ano"></select>
+            </label>
+            <button class="primary-button" id="refreshButton" type="button">Atualizar</button>
+          </div>
         </header>
 
         <section class="view active" data-view-panel="dashboard">
@@ -437,13 +429,8 @@
                     <input name="totalStockValue" type="number" min="0" step="0.01" placeholder="Ex.: 8000" />
                   </label>
 
-                  <label class="formula-input hidden" data-field="impactedOps">
-                    OPs impactadas
-                    <input name="impactedOps" type="number" min="0" step="1" placeholder="Ex.: 5" />
-                  </label>
-
                   <label class="formula-input hidden" data-field="wrongOps">
-                    OPs atendidas erradas
+                    OPs com erro
                     <input name="wrongOps" type="number" min="0" step="1" placeholder="Ex.: 2" />
                   </label>
 
@@ -942,72 +929,15 @@
           </section>
         </section>
 
-        <section class="view" data-view-panel="analyses">
-          <section class="analysis-screen">
-            <div class="analysis-heading">
-              <div>
-                <p class="eyebrow light">Gestão executiva</p>
-                <h2>Análises de performance</h2>
-              </div>
-              <span class="pill neutral" id="analysisPeriod">Semana</span>
-            </div>
-
-            <div class="analysis-summary-grid" id="analysisSummary"></div>
-
-            <div class="analysis-grid">
-              <section class="analysis-card analysis-performance">
-                <div class="analysis-card-heading">
-                  <div>
-                    <p class="eyebrow light">Performance</p>
-                    <h3>Performance por departamento</h3>
-                  </div>
-                </div>
-                <div class="analysis-department-bars" id="analysisDepartmentBars"></div>
-              </section>
-
-              <section class="analysis-card analysis-critical">
-                <div class="analysis-card-heading">
-                  <div>
-                    <p class="eyebrow light">Risco operacional</p>
-                    <h3>Indicadores críticos</h3>
-                  </div>
-                  <span class="pill danger" id="analysisCriticalCount">0</span>
-                </div>
-                <div class="analysis-critical-list" id="analysisCriticalList"></div>
-              </section>
-
-              <section class="analysis-card analysis-evolution">
-                <div class="analysis-card-heading">
-                  <div>
-                    <p class="eyebrow light">Evolução</p>
-                    <h3>Evolução mensal consolidada</h3>
-                  </div>
-                </div>
-                <canvas class="analysis-canvas" id="analysisMonthlyChart" width="720" height="300" aria-label="Gráfico de evolução mensal"></canvas>
-              </section>
-
-              <section class="analysis-card analysis-executive">
-                <div class="analysis-card-heading">
-                  <div>
-                    <p class="eyebrow light">Resumo executivo</p>
-                    <h3>Leitura gerencial</h3>
-                  </div>
-                </div>
-                <div class="analysis-executive-list" id="analysisExecutiveSummary"></div>
-              </section>
-            </div>
-          </section>
-        </section>
-
         <section class="view" data-view-panel="tv">
           <section class="tv-screen">
-            <div class="tv-heading">
-              <div>
-                <p class="eyebrow light">Módulo TV</p>
-                <h2>Painel de controle de indicadores</h2>
+            <header class="tv-heading">
+              <div class="tv-page-title">
+                <p class="eyebrow light">Resumo geral</p>
+                <h2>Panorama operacional</h2>
               </div>
-              <div id="tvClock">Atualizado agora</div>
-            </div>
+              <div class="tv-updated-badge" id="tvClock">Atualizado agora</div>
+            </header>
             <div class="tv-summary" id="tvSummary"></div>
             <div class="tv-grid" id="tvCards"></div>
           </section>

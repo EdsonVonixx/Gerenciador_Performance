@@ -41,6 +41,8 @@ let supabaseStateReloadQueued = false;
 
 const actionExtraIndicatorName = "5S Operacional";
 const actionExtraIndicatorDepartments = new Set(["almoxarifado", "estoque"]);
+const commercialOnlyDepartmentKeys = new Set(["almoxarifado", "recebimento", "estoque"]);
+const fullShiftOptions = ["Comercial", "Turno A", "Turno B", "Turno C", "Turno D"];
 
 const accessProfiles = [
   {
@@ -154,20 +156,20 @@ const departments = {
     launches: [],
     records: [],
   },
- secos: {
-  label: "Operação Secos e Expedição",
-  color: "#b87818",
-  indicators: [
-    { name: "Índice de Perdas por Ajuste nos Picks Secos", unit: "%", target: 0.05, goal: "lower", targetLabel: "Meta" },
-    { name: "Índice de OPs Atendidas Erradas", unit: "%", target: 0.3, goal: "lower", targetLabel: "Meta" },
-    { name: "Índice de Erros de Movimentação", unit: "%", target: 0.5, goal: "lower", targetLabel: "Meta" },
-    { name: "Erros Expedição Fábrica (Produto Acabado)", unit: "R$", target: 0, goal: "lower", targetLabel: "Meta" },
-    { name: "Tempo Médio Carregamento Carretas", unit: "min", target: 80, goal: "lower", targetLabel: "Meta" },
-    { name: "Produtividade Individual", unit: "atividades/colab", target: null, goal: "tracking", statusText: "Acompanhamento" },
-  ],
-  launches: [],
-  records: [],
-},
+  secos: {
+    label: "Operação Secos e Expedição",
+    color: "#b87818",
+    indicators: [
+      { name: "Índice de Perdas por Ajuste nos Picks Secos", unit: "%", target: 0.05, goal: "lower", targetLabel: "Meta" },
+      { name: "Índice de OPs Atendidas Erradas", unit: "%", target: 0.3, goal: "lower", targetLabel: "Meta" },
+      { name: "Índice de Erros de Movimentação", unit: "%", target: 0.5, goal: "lower", targetLabel: "Meta" },
+      { name: "Erros Expedição Fábrica (Produto Acabado)", unit: "R$", target: 0, goal: "lower", targetLabel: "Meta" },
+      { name: "Tempo Médio Carregamento Carretas", unit: "min", target: 80, goal: "lower", targetLabel: "Meta" },
+      { name: "Produtividade Individual", unit: "atividades/colab", target: null, goal: "tracking", statusText: "Acompanhamento" },
+    ],
+    launches: [],
+    records: [],
+  },
   quimicas: {
     label: "Separação Química",
     color: "#c8452d",
@@ -364,6 +366,7 @@ function ensureFiveSAuditRecordsMetadata() {
 }
 
 const prototypeStorageKey = "vpc-logistica-mvp-state-v3";
+const legacyPrototypeStorageKeys = ["vpc-logistica-mvp-state-v1", "vpc-logistica-mvp-state-v2"];
 const actionAttachmentStorageKey = "vpc-action-record-attachments-v1";
 const maxInlineAttachmentSize = 4 * 1024 * 1024;
 
@@ -860,7 +863,7 @@ function launchToSupabaseRow(launch, departmentKey = selectedDepartmentKey) {
     department_slug: departmentKey,
     indicator_name: indicator?.name || launch.indicator,
     record_date: launch.date,
-    shift: normalizeLaunchShift(launch.shift),
+    shift: normalizeDepartmentShift(launch.shift, departmentKey),
     value: numericValue,
     unit: indicator?.unit || "",
     formula_type: formulaType,
@@ -877,7 +880,7 @@ function supabaseRowToLaunch(row) {
     indicator: indicator?.name || row.indicator_name,
     value: Number.isFinite(numericValue) ? numericValue : row.value,
     numericValue,
-    shift: normalizeLaunchShift(row.shift),
+    shift: normalizeDepartmentShift(row.shift, row.department_slug),
     date: row.record_date,
     comment: row.comment || "",
     formulaData: row.formula_data || {},
@@ -1203,6 +1206,7 @@ function getInitials(name) {
 function getPeriodWindow() {
   return periodWindows[currentPeriod] || periodWindows.semana;
 }
+
 function isValidMonthFilter(value) {
   return /^\d{4}-\d{2}$/.test(value || "");
 }
@@ -1245,19 +1249,19 @@ function getDepartmentDateValues(department) {
 }
 
 function getPeriodContextDateValues() {
+  const consolidatedManagementViews = ["tv", "treatments"];
+  if (isManagement() && consolidatedManagementViews.includes(currentView)) {
+    return operationalDepartmentKeys.flatMap((key) => getDepartmentDateValues(departments[key]));
+  }
+
   return getDepartmentDateValues(currentDepartment());
 }
 
-function ensureSelectedMonthFilter(values = getPeriodContextDateValues()) {
-  if (!isValidMonthFilter(selectedMonthFilter)) {
-    selectedMonthFilter = getMonthFilterValueFromDate(maxDateFromValues(values) || new Date());
-  }
-  return selectedMonthFilter;
+function getDefaultMonthFilterValue(values = getPeriodContextDateValues()) {
+  return getMonthFilterValueFromDate(maxDateFromValues(values) || new Date());
 }
 
-function syncYearFilterOptions(yearFilter, values = getPeriodContextDateValues()) {
-  if (!yearFilter) return;
-
+function getAvailableYearFilterValues(values = getPeriodContextDateValues()) {
   const years = Array.from(
     new Set(
       values
@@ -1268,10 +1272,33 @@ function syncYearFilterOptions(yearFilter, values = getPeriodContextDateValues()
   ).sort((left, right) => Number(right) - Number(left));
 
   const selectedYear = isValidMonthFilter(selectedMonthFilter) ? selectedMonthFilter.slice(0, 4) : "";
-  if (selectedYear && !years.includes(selectedYear)) years.unshift(selectedYear);
-  if (years.length === 0) years.push(String(new Date().getFullYear()));
+  if (selectedYear && !years.includes(selectedYear)) {
+    years.unshift(selectedYear);
+  }
 
-  yearFilter.innerHTML = years.map((year) => `<option value="${year}">${year}</option>`).join("");
+  if (years.length === 0) {
+    years.push(String(new Date().getFullYear()));
+  }
+
+  return years;
+}
+
+function ensureSelectedMonthFilter(values = getPeriodContextDateValues()) {
+  if (!isValidMonthFilter(selectedMonthFilter)) {
+    selectedMonthFilter = getDefaultMonthFilterValue(values);
+  }
+  return selectedMonthFilter;
+}
+
+function syncYearFilterOptions(yearFilter, values = getPeriodContextDateValues()) {
+  if (!yearFilter) return;
+  const years = getAvailableYearFilterValues(values);
+  const currentOptions = Array.from(yearFilter.options).map((option) => option.value).join("|");
+  const nextOptions = years.join("|");
+
+  if (currentOptions !== nextOptions) {
+    yearFilter.innerHTML = years.map((year) => `<option value="${year}">${year}</option>`).join("");
+  }
 }
 
 function setSelectedMonthFilterFromControls() {
@@ -1293,21 +1320,26 @@ function syncMonthFilterControl() {
   const yearFilter = qs("#yearFilter");
   const showMonthFilter = currentPeriod === "mes";
 
-  monthFilterWrap?.classList.toggle("hidden", !showMonthFilter);
-  yearFilterWrap?.classList.toggle("hidden", !showMonthFilter);
+  if (monthFilterWrap) {
+    monthFilterWrap.classList.toggle("hidden", !showMonthFilter);
+  }
+  if (yearFilterWrap) {
+    yearFilterWrap.classList.toggle("hidden", !showMonthFilter);
+  }
 
-  if (monthFilter) monthFilter.disabled = !showMonthFilter;
-  if (yearFilter) yearFilter.disabled = !showMonthFilter;
-
-  if (!showMonthFilter) return;
-
-  const monthValue = ensureSelectedMonthFilter();
-  const [year, month] = monthValue.split("-");
-
-  syncYearFilterOptions(yearFilter);
-
-  if (monthFilter) monthFilter.value = month;
-  if (yearFilter) yearFilter.value = year;
+  if (yearFilter) {
+    yearFilter.disabled = !showMonthFilter;
+  }
+  if (monthFilter) {
+    monthFilter.disabled = !showMonthFilter;
+  }
+  if (showMonthFilter) {
+    const monthValue = ensureSelectedMonthFilter();
+    const [year, month] = monthValue.split("-");
+    syncYearFilterOptions(yearFilter);
+    if (monthFilter) monthFilter.value = month;
+    if (yearFilter) yearFilter.value = year;
+  }
 }
 
 function getSelectedOptionLabel(selector, fallback) {
@@ -1506,10 +1538,10 @@ function getCardDetails(indicator) {
   const indicatorKey = normalizeTextKey(indicator.name);
   const rowsWithFields = (fields) =>
     history.filter((item) => fields.every((field) => Number.isFinite(Number(item[field]))));
-   const totalField = (rows, field) => rows.reduce((sum, item) => sum + Number(item[field]), 0);
+  const totalField = (rows, field) => rows.reduce((sum, item) => sum + Number(item[field]), 0);
   const averageField = (rows, field) => totalField(rows, field) / rows.length;
   const sumField = averageField;
-    const formatNumber = formatIntegerDisplay;
+  const formatNumber = formatIntegerDisplay;
 
   if (indicatorKey.includes("capacidade") && indicatorKey.includes("recebimento")) {
     const rows = rowsWithFields(["dailyReceipts", "plannedReceiptCapacity"]);
@@ -1622,13 +1654,6 @@ function getCardDetails(indicator) {
         ["Valor ajustado", `R$ ${formatNumber(sumField(rows, "adjustedValue"))}`],
         ["Valor do estoque", `R$ ${formatNumber(sumField(rows, "totalStockValue"))}`],
       ];
-    }
-  }
-
-  if (indicatorKey.includes("ruptura") && indicatorKey.includes("embalagens")) {
-    const rows = rowsWithFields(["impactedOps"]);
-    if (rows.length > 0) {
-      return [["OPs impactadas", formatNumber(sumField(rows, "impactedOps"))]];
     }
   }
 
@@ -1814,17 +1839,9 @@ function getCardDetails(indicator) {
     history.every((item) => Number.isFinite(Number(item.correctItems)) && Number.isFinite(Number(item.inventoriedItems)));
 
   if (hasAcuracidadeCounts) {
-    const sums = history.reduce(
-      (acc, item) => {
-        acc.correct += Number(item.correctItems);
-        acc.inventoried += Number(item.inventoriedItems);
-        return acc;
-      },
-      { correct: 0, inventoried: 0 },
-    );
     return [
-      ["Itens corretos", formatNumber(sums.correct)],
-      ["Itens inventariados", formatNumber(sums.inventoried)],
+      ["Itens corretos", formatNumber(averageField(history, "correctItems"))],
+      ["Itens inventariados", formatNumber(averageField(history, "inventoriedItems"))],
     ];
   }
 
@@ -1834,34 +1851,23 @@ function getCardDetails(indicator) {
     history.every((item) => Number.isFinite(Number(item.missingItems)) && Number.isFinite(Number(item.criticalItems)));
 
   if (hasRupturaCounts) {
-    const sums = history.reduce(
-      (acc, item) => {
-        acc.missing += Number(item.missingItems);
-        acc.critical += Number(item.criticalItems);
-        return acc;
-      },
-      { missing: 0, critical: 0 },
-    );
-
     return [
-      ["Itens em falta", formatNumber(sums.missing)],
-      ["Itens críticos", formatNumber(sums.critical)],
+      ["Itens em falta", formatNumber(averageField(history, "missingItems"))],
+      ["Itens críticos", formatNumber(averageField(history, "criticalItems"))],
     ];
   }
 
   if (indicatorKey === "tempo de recebimento" || indicatorKey === "sla de armazenagem") {
     const rowsWithLoads = history.filter((item) => Number.isFinite(Number(item.receivedLoads)));
     if (rowsWithLoads.length > 0) {
-      const totalLoads = rowsWithLoads.reduce((sum, item) => sum + Number(item.receivedLoads), 0);
-      return [["Carretas recebidas", formatNumber(totalLoads)]];
+      return [["Carretas recebidas", formatNumber(averageField(rowsWithLoads, "receivedLoads"))]];
     }
   }
 
   if (indicatorKey === "avarias no recebimento") {
     const rowsWithDamage = history.filter((item) => Number.isFinite(Number(item.damagedUnits)));
     if (rowsWithDamage.length > 0) {
-      const totalDamaged = rowsWithDamage.reduce((sum, item) => sum + Number(item.damagedUnits), 0);
-      return [["Itens avariados", formatNumber(totalDamaged)]];
+      return [["Itens avariados", formatNumber(averageField(rowsWithDamage, "damagedUnits"))]];
     }
   }
 
@@ -1888,16 +1894,14 @@ function getCardDetails(indicator) {
   if (indicatorKey === "giro de docas") {
     const rowsWithPallets = history.filter((item) => Number.isFinite(Number(item.receivedPallets)));
     if (rowsWithPallets.length > 0) {
-      const totalPallets = rowsWithPallets.reduce((sum, item) => sum + Number(item.receivedPallets), 0);
-      return [["Volume paletes recebidos", formatNumber(totalPallets)]];
+      return [["Volume paletes recebidos", formatNumber(averageField(rowsWithPallets, "receivedPallets"))]];
     }
   }
 
   if (indicatorKey === "acuracidade do estoque") {
     const rowsWithInventoried = history.filter((item) => Number.isFinite(Number(item.inventoriedItems)));
     if (rowsWithInventoried.length > 0) {
-      const totalInventoried = rowsWithInventoried.reduce((sum, item) => sum + Number(item.inventoriedItems), 0);
-      return [["SKUs inventariados", formatNumber(totalInventoried)]];
+      return [["SKUs inventariados", formatNumber(averageField(rowsWithInventoried, "inventoriedItems"))]];
     }
   }
 
@@ -1933,16 +1937,14 @@ function getCardDetails(indicator) {
   if (indicatorKey === "produtividade de contagens") {
     const rowsWithCounted = history.filter((item) => Number.isFinite(Number(item.countedItems)));
     if (rowsWithCounted.length > 0) {
-      const totalCounted = rowsWithCounted.reduce((sum, item) => sum + Number(item.countedItems), 0);
-      return [["SKUs inventariados", formatNumber(totalCounted)]];
+      return [["SKUs inventariados", formatNumber(averageField(rowsWithCounted, "countedItems"))]];
     }
   }
 
   if (indicatorKey === "perdas de inventario") {
     const rowsWithLoss = history.filter((item) => Number.isFinite(Number(item.lossItems)));
     if (rowsWithLoss.length > 0) {
-      const totalLoss = rowsWithLoss.reduce((sum, item) => sum + Number(item.lossItems), 0);
-      return [["Perda de estoque", formatNumber(totalLoss)]];
+      return [["Perda de estoque", formatNumber(averageField(rowsWithLoss, "lossItems"))]];
     }
   }
 
@@ -2058,7 +2060,7 @@ function ensureLaunchIds() {
     department.launches = department.launches.map((launch) => ({
       ...launch,
       id: launch.id || generateLaunchId(),
-      shift: normalizeLaunchShift(launch.shift),
+      shift: normalizeDepartmentShift(launch.shift, departmentKey),
     }));
   });
 }
@@ -2190,10 +2192,12 @@ function restorePrototypeState() {
 function getFilteredLaunches(department = currentDepartment()) {
   if (!Array.isArray(department.launches) || department.launches.length === 0) return [];
 
-  const bounds = getDateFilterBounds(department.launches.map((launch) => launch.date));
-  if (!bounds) return department.launches;
+  const validIndicators = new Set((department.indicators || []).map((indicator) => normalizeTextKey(indicator.name)));
+  const validLaunches = department.launches.filter((launch) => validIndicators.has(normalizeTextKey(launch.indicator)));
+  const bounds = getDateFilterBounds(validLaunches.map((launch) => launch.date));
+  if (!bounds) return validLaunches;
 
-  return department.launches
+  return validLaunches
     .filter((launch) => {
       const launchDate = toDateOrNull(launch.date);
       if (!launchDate) return true;
@@ -2269,6 +2273,16 @@ function normalizeLaunchShift(shiftValue) {
   if (shiftKey === "turno c") return "Turno C";
   if (shiftKey === "turno d") return "Turno D";
   return "Comercial";
+}
+
+function getDepartmentShiftOptions(departmentKey = selectedDepartmentKey) {
+  return commercialOnlyDepartmentKeys.has(departmentKey) ? ["Comercial"] : fullShiftOptions;
+}
+
+function normalizeDepartmentShift(shiftValue, departmentKey = selectedDepartmentKey) {
+  const normalizedShift = normalizeLaunchShift(shiftValue);
+  const shiftOptions = getDepartmentShiftOptions(departmentKey);
+  return shiftOptions.includes(normalizedShift) ? normalizedShift : "Comercial";
 }
 
 function normalizeRecordStatusLabel(statusValue) {
@@ -2383,9 +2397,6 @@ function getLaunchFormulaType(indicatorName) {
   if (selectedDepartmentKey === "secos") {
     if (key.includes("perdas") && key.includes("picks")) {
       return "secos_perdas_picks";
-    }
-    if (key.includes("ruptura") && key.includes("embalagens")) {
-      return "secos_ruptura_embalagens";
     }
     if (key.includes("ops") && key.includes("erradas")) {
       return "secos_ops_atendidas_erradas";
@@ -2547,9 +2558,9 @@ launchFormulaDefinitions.recebimento_erros_armazenagem = {
 launchFormulaDefinitions.recebimento_produtividade_individual = {
   title: "Cálculo de Produtividade Individual",
   hint: "Produtividade = Atividades concluídas no turno / Total de colaboradores.",
-fields: ["completedShiftActivities", "collaboratorCount"],
-allowNegative: false,
-resultSuffix: " atividades/colab",
+  fields: ["completedShiftActivities", "collaboratorCount"],
+  allowNegative: false,
+  resultSuffix: " atividades/colab",
 };
 
 launchFormulaDefinitions.ruptura_estocaveis = {
@@ -2625,9 +2636,9 @@ launchFormulaDefinitions.estoque_slow_mover = {
 launchFormulaDefinitions.produtividade_individual = {
   title: "Cálculo de Produtividade Individual (Uso & Consumo)",
   hint: "Produtividade = Atividades concluídas no turno / Total de colaboradores.",
-fields: ["completedShiftActivities", "collaboratorCount"],
-allowNegative: false,
-resultSuffix: " atividades/colab",
+  fields: ["completedShiftActivities", "collaboratorCount"],
+  allowNegative: false,
+  resultSuffix: " atividades/colab",
 };
 
 launchFormulaDefinitions.estoque_produtividade_individual_contagens = {
@@ -3064,12 +3075,6 @@ function computeLaunchFormulaValue(formulaType) {
     return (adjustedValue / totalStockValue) * 100;
   }
 
-  if (formulaType === "secos_ruptura_embalagens") {
-    const impactedOps = getLaunchFormulaFieldValue("impactedOps");
-    if (!Number.isFinite(impactedOps)) return NaN;
-    return impactedOps;
-  }
-
   if (formulaType === "secos_ops_atendidas_erradas") {
     const wrongOps = getLaunchFormulaFieldValue("wrongOps");
     const requestedOps = getLaunchFormulaFieldValue("requestedOps");
@@ -3270,7 +3275,6 @@ function syncLaunchFormByIndicator() {
     "dailyCountedSkus",
     "adjustedValue",
     "totalStockValue",
-    "impactedOps",
     "wrongOps",
     "requestedOps",
     "expeditionErrorValue",
@@ -3344,6 +3348,16 @@ function syncLaunchFormByIndicator() {
   updateLaunchResultFromFormula();
 }
 
+function syncLaunchShiftOptions() {
+  const shiftSelect = qs('#launchForm [name="shift"]');
+  if (!shiftSelect) return;
+
+  const currentShift = normalizeDepartmentShift(shiftSelect.value);
+  const shiftOptions = getDepartmentShiftOptions(selectedDepartmentKey);
+  shiftSelect.innerHTML = shiftOptions.map((shift) => `<option>${escapeHtml(shift)}</option>`).join("");
+  shiftSelect.value = shiftOptions.includes(currentShift) ? currentShift : "Comercial";
+}
+
 function populateLogin() {
   qs("#loginSector").innerHTML = accessProfiles
     .map((profile) => `<option value="${escapeAttribute(profile.key)}">${escapeHtml(profile.label)}</option>`)
@@ -3363,8 +3377,7 @@ function renderNavigation() {
     appShell.classList.toggle("treatments-mode", currentView === "treatments");
     appShell.dataset.activeView = currentView;
   }
-
-  const consolidatedManagementViews = ["tv", "treatments", "analyses"];
+  const consolidatedManagementViews = ["tv", "treatments"];
   qsa(".management-only").forEach((item) => item.classList.toggle("hidden", !isManagement()));
   qsa(".operational-only").forEach((item) => item.classList.toggle("hidden", isManagement()));
   qsa(".chemical-only").forEach((item) => item.classList.add("hidden"));
@@ -3386,7 +3399,6 @@ function renderNavigation() {
   if (departmentSelect) {
     departmentSelect.disabled = !isManagement() || consolidatedManagementViews.includes(currentView);
   }
-
   syncMonthFilterControl();
 }
 
@@ -3401,7 +3413,7 @@ function renderUser() {
   }
   qs("#userName").textContent = currentUser.label;
   qs("#topDepartment").textContent =
-    isManagement() && (currentView === "tv" || currentView === "treatments" || currentView === "analyses")
+    isManagement() && (currentView === "tv" || currentView === "treatments")
       ? "Gestão | Todos os departamentos"
       : isManagement()
         ? `Gestão | Visualizando ${dept.label}`
@@ -4214,15 +4226,10 @@ function applySecosLaunchFormulaDetails(indicator, formulaType, payload) {
     ];
   }
 
-  if (formulaType === "secos_ruptura_embalagens") {
-    if (!Number.isFinite(payload.impactedOps)) return;
-    indicator.details = [["OPs impactadas", formatNumber(payload.impactedOps)]];
-  }
-
   if (formulaType === "secos_ops_atendidas_erradas") {
     if (!Number.isFinite(payload.wrongOps) || !Number.isFinite(payload.requestedOps)) return;
     indicator.details = [
-      ["OPs erradas", formatNumber(payload.wrongOps)],
+      ["OPs com erro", formatNumber(payload.wrongOps)],
       ["OPs solicitadas", formatNumber(payload.requestedOps)],
     ];
   }
@@ -4544,11 +4551,6 @@ function extractFormulaPayload(formData, formulaType) {
       totalStockValue: parseLocalizedNumber(formData.get("totalStockValue")),
     };
   }
-  if (formulaType === "secos_ruptura_embalagens") {
-    return {
-      impactedOps: parseLocalizedNumber(formData.get("impactedOps")),
-    };
-  }
   if (formulaType === "secos_ops_atendidas_erradas") {
     return {
       wrongOps: parseLocalizedNumber(formData.get("wrongOps")),
@@ -4776,9 +4778,6 @@ function buildHistoryEntry(dateValue, numericValue, formulaType, formulaPayload,
     entry.adjustedValue = formulaPayload.adjustedValue;
     entry.totalStockValue = formulaPayload.totalStockValue;
   }
-  if (formulaType === "secos_ruptura_embalagens") {
-    entry.impactedOps = formulaPayload.impactedOps;
-  }
   if (formulaType === "secos_ops_atendidas_erradas") {
     entry.wrongOps = formulaPayload.wrongOps;
     entry.requestedOps = formulaPayload.requestedOps;
@@ -4853,8 +4852,9 @@ function startLaunchEdit(launchId) {
   launchForm.reset();
   launchForm.elements.indicator.value = launch.indicator;
   syncLaunchFormByIndicator();
+  syncLaunchShiftOptions();
   launchForm.elements.date.value = launch.date;
-  launchForm.elements.shift.value = normalizeLaunchShift(launch.shift);
+  launchForm.elements.shift.value = normalizeDepartmentShift(launch.shift);
   launchForm.elements.comment.value = launch.comment || "";
 
   const formulaType = getLaunchFormulaType(launch.indicator);
@@ -4901,7 +4901,7 @@ async function deleteLaunch(launchId) {
   writePrototypeState();
   renderAll();
   setView(currentView);
-  showToast(remotePersistenceActive() ? "Lançamento excluído da base SQL." : "Lançamento excluído.");
+  showToast(remotePersistenceActive() ? "Resultado excluído da base SQL." : "Resultado excluído.");
 }
 
 function getRecordTone(record) {
@@ -5048,11 +5048,11 @@ function renderActionTable() {
           </td>
           <td>${record.dueDate ? formatDate(record.dueDate) : "-"}</td>
           <td>
-          <div class="table-description-cell">
-            <span>${escapeHtml(record.description || "-")}</span>
-            ${renderRecordAttachment(record)}
-          </div>
-        </td>
+            <div class="table-description-cell">
+              <span>${escapeHtml(record.description || "-")}</span>
+              ${renderRecordAttachment(record)}
+            </div>
+          </td>
         </tr>
       `;
     })
@@ -5094,17 +5094,17 @@ async function deleteRecord(recordId) {
     return;
   }
 
- department.records = department.records.filter((item) => item.id !== recordId);
-removeActionAttachment(recordId);
-if (editingRecordId === recordId) {
-  qs("#actionForm").reset();
-  setDefaultDates();
-  resetActionFormState();
-}
-writePrototypeState();
-renderAll();
-setView(currentView);
-showToast(remotePersistenceActive() ? "Registro excluído da base SQL." : "Registro excluído.", "success");
+  department.records = department.records.filter((item) => item.id !== recordId);
+  removeActionAttachment(recordId);
+  if (editingRecordId === recordId) {
+    qs("#actionForm").reset();
+    setDefaultDates();
+    resetActionFormState();
+  }
+  writePrototypeState();
+  renderAll();
+  setView(currentView);
+  showToast(remotePersistenceActive() ? "Registro excluído da base SQL." : "Registro excluído.", "success");
 }
 
 async function updateRecordStatus(recordId, nextStatus, departmentKey = selectedDepartmentKey) {
@@ -5127,7 +5127,7 @@ async function updateRecordStatus(recordId, nextStatus, departmentKey = selected
   writePrototypeState();
   renderAll();
   setView(currentView);
-  showToast("Status atualizado.");
+  showToast("Status editado.");
 }
 
 function getConsolidatedManagementRecords() {
@@ -5253,7 +5253,12 @@ function renderManagementTreatments() {
             </select>
           </td>
           <td>${record.dueDate ? formatDate(record.dueDate) : "-"}</td>
-          <td>${escapeHtml(record.description || "-")}</td>
+          <td>
+            <div class="table-description-cell">
+              <span>${escapeHtml(record.description || "-")}</span>
+              ${renderRecordAttachment(record)}
+            </div>
+          </td>
         </tr>
       `;
     })
@@ -5940,65 +5945,784 @@ function renderActions() {
   renderActionTable();
 }
 
-function renderTv() {
-  qs("#tvSummary").innerHTML = "";
+const tvDashboardData = {
+  summary: {
+    totalIndicators: 26,
+    onTarget: 15,
+    attention: 0,
+    critical: 11,
+    health: 57,
+  },
+  sectors: [
+    {
+      name: "Almoxarifado U&C",
+      rank: 1,
+      health: 32,
+      status: "critical",
+      summary: { onTarget: 1, attention: 0, critical: 4 },
+      indicators: [
+        {
+          name: "Ruptura de Materiais de Estoque (Manutenção)",
+          accumulated: "10,4%",
+          target: "5%",
+          status: "danger",
+        },
+        {
+          name: "Acuracidade de Estoque (Itens)",
+          accumulated: "100%",
+          target: "95%",
+          status: "success",
+        },
+        {
+          name: "Aderência ao Estoque Mínimo",
+          accumulated: "90,7%",
+          target: "95%",
+          status: "danger",
+        },
+        {
+          name: "Cumprimento do Plano de Inventário",
+          accumulated: "73,5%",
+          target: "100%",
+          status: "danger",
+        },
+        {
+          name: "Estoque Slow Mover (Maior que 90 dias)",
+          accumulated: "35%",
+          target: "10%",
+          status: "danger",
+        },
+      ],
+      productivity: {
+        name: "Produtividade Individual (Uso & Consumo)",
+        value: "15,1 atividades/colab",
+      },
+    },
+    {
+      name: "Recebimento e Armazenagem",
+      rank: 4,
+      health: 84,
+      status: "good",
+      summary: { onTarget: 4, attention: 0, critical: 1 },
+      indicators: [
+        {
+          name: "Capacidade de Recebimento Diário",
+          accumulated: "96,9%",
+          target: "85%",
+          status: "success",
+        },
+        {
+          name: "OTIF de Recebimento de Fornecedores x Follow Up",
+          accumulated: "113,4%",
+          target: "95%",
+          status: "success",
+        },
+        {
+          name: "Eficiência de Recebimento",
+          accumulated: "98,6%",
+          target: "95%",
+          status: "success",
+        },
+        {
+          name: "Tempo Médio de Recebimento",
+          accumulated: "61 min",
+          target: "50 min",
+          status: "danger",
+        },
+        {
+          name: "Erros de Armazenagem e Movimentação",
+          accumulated: "0%",
+          target: "3%",
+          status: "success",
+        },
+      ],
+      productivity: {
+        name: "Produtividade Individual",
+        value: "33.857,2 atividades/colab",
+      },
+    },
+    {
+      name: "Estoque e Inventário",
+      rank: 2,
+      health: 39,
+      status: "critical",
+      summary: { onTarget: 2, attention: 0, critical: 4 },
+      indicators: [
+        {
+          name: "Acuracidade de Estoque (SKU)",
+          accumulated: "96,3%",
+          target: "95%",
+          status: "success",
+        },
+        {
+          name: "Divergência Contábil x WMS (SKU)",
+          accumulated: "29%",
+          target: "8%",
+          status: "danger",
+        },
+        {
+          name: "Cumprimento do Plano de Inventário",
+          accumulated: "67,3%",
+          target: "100%",
+          status: "danger",
+        },
+        {
+          name: "Índice de Divergências Tratadas",
+          accumulated: "100%",
+          target: "98%",
+          status: "success",
+        },
+        {
+          name: "Estoque Slow Mover (Maior que 90 dias)",
+          accumulated: "25,1%",
+          target: "10%",
+          status: "danger",
+        },
+        {
+          name: "Produtividade de Contagens",
+          accumulated: "18 SKU/dia",
+          target: "20 SKU/dia",
+          status: "danger",
+        },
+      ],
+    },
+    {
+      name: "Operação Secos e Expedição",
+      rank: 5,
+      health: 100,
+      status: "best",
+      summary: { onTarget: 5, attention: 0, critical: 0 },
+      indicators: [
+        {
+          name: "Índice de Perdas por Ajuste nos Picks Secos",
+          accumulated: "0%",
+          target: "0,1%",
+          status: "success",
+        },
+        {
+          name: "Índice de OPs Atendidas Erradas",
+          accumulated: "0,2%",
+          target: "0,3%",
+          status: "success",
+        },
+        {
+          name: "Índice de Erros de Movimentação",
+          accumulated: "0%",
+          target: "0,5%",
+          status: "success",
+        },
+        {
+          name: "Erros Expedição Fábrica / Produto Acabado",
+          accumulated: "R$ 0",
+          target: "R$ 0",
+          status: "success",
+        },
+        {
+          name: "Tempo Médio Carregamento Carretas",
+          accumulated: "58 min",
+          target: "80 min",
+          status: "success",
+        },
+      ],
+      productivity: {
+        name: "Produtividade Individual",
+        value: "30,5 atividades/colab",
+      },
+    },
+    {
+      name: "Separação Química",
+      rank: 3,
+      health: 60,
+      status: "medium",
+      summary: { onTarget: 3, attention: 0, critical: 2 },
+      indicators: [
+        {
+          name: "Confiabilidade do Abastecimento da Produção",
+          accumulated: "94,8%",
+          target: "90%",
+          status: "success",
+        },
+        {
+          name: "Eficiência no Atendimento das OPs",
+          accumulated: "94,1%",
+          target: "90%",
+          status: "success",
+        },
+        {
+          name: "Índice de Retrabalho de Separação",
+          accumulated: "4,3%",
+          target: "0,1%",
+          status: "danger",
+        },
+        {
+          name: "Taxa de Giro do Kanban",
+          accumulated: "9,7%",
+          target: "3%",
+          status: "danger",
+        },
+        {
+          name: "Produtividade de OPs Separadas",
+          accumulated: "100%",
+          target: "100%",
+          status: "success",
+        },
+      ],
+      productivity: {
+        name: "Produtividade Individual",
+        value: "Sem dados",
+      },
+    },
+  ],
+  alerts: [
+    {
+      indicator: "Divergência Contábil x WMS (SKU)",
+      sector: "Estoque e Inventário",
+      accumulated: "29%",
+      target: "8%",
+    },
+    {
+      indicator: "Cumprimento do Plano de Inventário",
+      sector: "Almoxarifado U&C",
+      accumulated: "73,5%",
+      target: "100%",
+    },
+    {
+      indicator: "Cumprimento do Plano de Inventário",
+      sector: "Estoque e Inventário",
+      accumulated: "67,3%",
+      target: "100%",
+    },
+    {
+      indicator: "Estoque Slow Mover (Maior que 90 dias)",
+      sector: "Almoxarifado U&C",
+      accumulated: "35%",
+      target: "10%",
+    },
+    {
+      indicator: "Estoque Slow Mover (Maior que 90 dias)",
+      sector: "Estoque e Inventário",
+      accumulated: "25,1%",
+      target: "10%",
+    },
+    {
+      indicator: "Ruptura de Material de Estoque (Manutenção)",
+      sector: "Almoxarifado U&C",
+      accumulated: "10,4%",
+      target: "5%",
+    },
+    {
+      indicator: "Índice de Retrabalho de Separação",
+      sector: "Separação Química",
+      accumulated: "4,3%",
+      target: "0,1%",
+    },
+    {
+      indicator: "Taxa de Giro do Kanban",
+      sector: "Separação Química",
+      accumulated: "9,7%",
+      target: "3%",
+    },
+    {
+      indicator: "Tempo Médio de Recebimento",
+      sector: "Recebimento e Armazenagem",
+      accumulated: "61 min",
+      target: "50 min",
+    },
+    {
+      indicator: "Aderência ao Estoque Mínimo",
+      sector: "Almoxarifado U&C",
+      accumulated: "90,7%",
+      target: "95%",
+    },
+    {
+      indicator: "Produtividade de Contagens",
+      sector: "Estoque e Inventário",
+      accumulated: "18 SKU/dia",
+      target: "20 SKU/dia",
+    },
+  ],
+  executiveReadings: [
+    {
+      tone: "success",
+      label: "Melhor setor",
+      title: "Operação Secos e Expedição",
+      description: "100% dos indicadores na meta.",
+    },
+    {
+      tone: "danger",
+      label: "Setores mais críticos",
+      title: "Almoxarifado U&C e Estoque e Inventário",
+      description: "Cada um com 4 indicadores críticos.",
+    },
+    {
+      tone: "warn",
+      label: "Principal risco",
+      title: "Risco operacional concentrado",
+      description:
+        "Divergência Contábil x WMS, Slow Movers, Cumprimento do Plano de Inventário, Retrabalho de Separação e Tempo Médio de Recebimento.",
+    },
+    {
+      tone: "process",
+      label: "Ritmo de gestão",
+      title: "Rotina de preenchimento",
+      icon: "checklist",
+      description:
+        "Priorizar os setores com pendências por dia útil e manter o registro diário dos indicadores no turno correto.",
+    },
+  ],
+  healthBySector: [
+    { sector: "Operação Secos e Expedição", health: 100 },
+    { sector: "Recebimento e Armazenagem", health: 84 },
+    { sector: "Separação Química", health: 60 },
+    { sector: "Estoque e Inventário", health: 39 },
+    { sector: "Almoxarifado U&C", health: 32 },
+  ],
+};
 
-  qs("#tvCards").innerHTML = operationalDepartmentKeys
-    .map((key) => {
-      const department = departments[key];
-      const departmentCounts = statusCounts(department.indicators, department);
-      const indicatorCards = department.indicators
-        .map((indicator) => {
-          const accumulatedValue = getIndicatorAccumulatedValue(indicator, department);
-          const status = getStatus(indicator, department, accumulatedValue);
-          const showTvStatus = isOperationalStatus(status);
-          const showTargetMetric = indicator.goal !== "tracking" && indicator.target !== null && indicator.target !== undefined;
+function renderTvIcon(icon) {
+  const icons = {
+    module:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9A1.5 1.5 0 0 1 18.5 16H14l1 3h2v1H7v-1h2l1-3H5.5A1.5 1.5 0 0 1 4 14.5v-9Zm2 1V14h12V6.5H6Z"/></svg>',
+    target:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 1 8.49-6H18.3A7 7 0 1 0 12 19a7 7 0 0 0 6.7-5h2.05A9 9 0 0 1 12 21Zm0-4a5 5 0 1 1 4.58-7H14.3A3 3 0 1 0 12 15a3 3 0 0 0 2.83-2h2.1A5 5 0 0 1 12 17Zm8-7h-7V8h7v2Z"/></svg>',
+    alert:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 20H2L12 3Zm0 4.1L5.5 18h13L12 7.1ZM11 10h2v4h-2v-4Zm0 5h2v2h-2v-2Z"/></svg>',
+    health:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-3.9-7-10V5l7-3 7 3v6c0 6.1-7 10-7 10Zm0-2.3c3.1-2 5-4.7 5-7.7V6.3l-5-2.1-5 2.1V11c0 3 1.9 5.7 5 7.7Z"/></svg>',
+    trophy:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v3h3v2a5 5 0 0 1-5 5h-.2A4 4 0 0 1 13 15.5V18h3v2H8v-2h3v-2.5A4 4 0 0 1 9.2 14H9a5 5 0 0 1-5-5V7h3V4Zm10 5V7h-1v4.8A3 3 0 0 0 17 9ZM7 7H6v2a3 3 0 0 0 1 2.2V7Zm2-1v6a3 3 0 1 0 6 0V6H9Z"/></svg>',
+    chart:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16v2H2V4h2v15Zm3-2V9h3v8H7Zm5 0V5h3v12h-3Zm5 0v-6h3v6h-3Z"/></svg>',
+    clipboard:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 2h3v16H5V5h3l1-2Zm1.2 2-.5 1h4.6l-.5-1h-3.6ZM7 7v12h10V7H7Zm2 4h6v2H9v-2Zm0 4h4v2H9v-2Z"/></svg>',
+    pulse:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h3.2l2.1-6 4 10 2-4H20v2h-3.5l-3.4 6-3.7-9.3L8.6 15H4v-2Z"/></svg>',
+    checklist:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 8.6-1.4-1.4L6.2 8.6 9 11.4l5-5L12.6 5 9 8.6ZM17 7h3v2h-3V7ZM9 16.6l-1.4-1.4-1.4 1.4L9 19.4l5-5-1.4-1.4L9 16.6ZM17 15h3v2h-3v-2Z"/></svg>',
+    clock:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20Zm0-2a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm1-8.4 3.3 3.3-1.4 1.4L11 12.4V7h2v4.6Z"/></svg>',
+  };
+  return icons[icon] || icons.chart;
+}
 
-          return `
-            <article class="tv-indicator-card ${status}">
-              <header>
-                <h4>${escapeHtml(indicator.name)}</h4>
-                ${showTvStatus ? `<span class="pill ${status}">${escapeHtml(getStatusExecutiveLabel(status))}</span>` : ""}
-              </header>
-              <div class="tv-metrics">
+function getTvHealthTone(health) {
+  if (health >= 80) return "success";
+  if (health >= 60) return "warn";
+  return "danger";
+}
+
+function renderTvSummaryCard(card) {
+  return `
+    <article class="tv-summary-card ${card.tone}">
+      <span class="tv-summary-icon">${renderTvIcon(card.icon)}</span>
+      <div>
+        <span>${escapeHtml(card.title)}</span>
+        <strong>${escapeHtml(String(card.value))}</strong>
+      </div>
+    </article>
+  `;
+}
+
+function renderTvHealthGauge(summary) {
+  return `
+    <article class="tv-summary-card tv-health-card ${getTvHealthTone(summary.health)}">
+      <span class="tv-summary-icon health">${renderTvIcon("pulse")}</span>
+      <div>
+        <span>Saúde Operacional Geral</span>
+        <strong>${summary.health}%</strong>
+      </div>
+    </article>
+  `;
+}
+
+function renderTvIndicatorRow(indicator) {
+  return `
+    <article class="tv-indicator-row ${indicator.status}">
+      <div class="tv-indicator-name">
+        <strong>${escapeHtml(indicator.name)}</strong>
+      </div>
+      <div class="tv-indicator-values">
+        <span>
+          <small>Acumulado</small>
+          <strong>${escapeHtml(indicator.accumulated)}</strong>
+        </span>
+        <span>
+          <small>Meta</small>
+          <strong>${escapeHtml(indicator.target)}</strong>
+        </span>
+      </div>
+    </article>
+  `;
+}
+
+function renderTvProductivity(productivity) {
+  if (!productivity) return "";
+  return `
+    <article class="tv-productivity-row">
+      <strong>${escapeHtml(productivity.name)}</strong>
+      <em>${escapeHtml(productivity.value)}</em>
+    </article>
+  `;
+}
+
+function renderTvSectorCard(sector) {
+  return `
+    <article class="tv-sector-card ${sector.status}">
+      <header class="tv-sector-header">
+        <span class="tv-sector-rank">${sector.rank}</span>
+        <div>
+          <h3>${escapeHtml(sector.name)}</h3>
+        </div>
+      </header>
+      <div class="tv-sector-health" aria-label="Saúde do setor ${sector.health}%">
+        <strong class="${getTvHealthTone(sector.health)}">${sector.health}%</strong>
+      </div>
+      <div class="tv-indicator-list">
+        ${sector.indicators.map(renderTvIndicatorRow).join("")}
+        ${renderTvProductivity(sector.productivity)}
+      </div>
+    </article>
+  `;
+}
+
+function renderTvPriorityAlertsTable(alerts) {
+  return `
+    <aside class="tv-alerts-card">
+      <header>
+        <div>
+          <p class="eyebrow light">Risco operacional</p>
+          <h3>Alertas Prioritários</h3>
+        </div>
+        <span class="tv-alert-icon">${renderTvIcon("alert")}</span>
+      </header>
+      <div class="tv-alert-table" role="table" aria-label="Ranking de indicadores críticos">
+        ${alerts
+          .map(
+            (alert, index) => `
+              <article class="tv-alert-row" role="row">
+                <strong>${index + 1}</strong>
                 <div>
-                  <span>Acumulado</span>
-                  <strong>${formatMetric(indicator, accumulatedValue)}</strong>
+                  <span>${escapeHtml(alert.indicator)}</span>
+                  <small>${escapeHtml(alert.sector)}</small>
                 </div>
-                ${
-                  showTargetMetric
-                    ? `<div>
-                        <span>Meta</span>
-                        <strong>${escapeHtml(formatTargetValue(indicator))}</strong>
-                      </div>`
-                    : ""
-                }
+                <em>${escapeHtml(alert.accumulated)}</em>
+                <small>${escapeHtml(alert.target)}</small>
+              </article>
+            `,
+          )
+          .join("")}
+      </div>
+    </aside>
+  `;
+}
+
+function renderTvExecutiveReadings(readings) {
+  return `
+    <section class="tv-insight-card tv-executive-readings">
+      <div class="tv-card-heading">
+        <p class="eyebrow light">Leituras executivas</p>
+        <h3>Resumo gerencial</h3>
+      </div>
+      <div class="tv-reading-list">
+        ${readings
+          .map(
+            (reading) => `
+              <article class="tv-reading-item ${reading.tone}">
+                <span class="tv-reading-icon">${renderTvIcon(reading.icon || (reading.tone === "success" ? "trophy" : reading.tone === "danger" ? "alert" : "health"))}</span>
+                <div>
+                  <span>${escapeHtml(reading.label)}</span>
+                  <strong>${escapeHtml(reading.title)}</strong>
+                  <small>${escapeHtml(reading.description)}</small>
+                </div>
+              </article>
+            `,
+          )
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderTvSectorHealthBarChart(items) {
+  return `
+    <section class="tv-insight-card">
+      <div class="tv-card-heading">
+        <p class="eyebrow light">Comparativo de saúde por setor</p>
+        <h3>Performance consolidada</h3>
+      </div>
+      <div class="tv-health-bars">
+        ${items
+          .map((item) => {
+            const tone = getTvHealthTone(item.health);
+            return `
+              <article class="tv-health-row ${tone}">
+                <span>${escapeHtml(item.sector)}</span>
+                <div class="tv-health-track">
+                  <div style="width: ${Math.max(0, Math.min(100, item.health))}%"></div>
+                </div>
+                <strong>${item.health}%</strong>
+              </article>
+            `;
+          })
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function getTvDateKey(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getTvDateKeysInRange(startDate, endDate) {
+  const dates = [];
+  const cursor = new Date(startDate);
+  while (cursor <= endDate) {
+    dates.push(getTvDateKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
+function isTvBusinessDay(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return false;
+  const day = date.getDay();
+  return day >= 1 && day <= 5;
+}
+
+function getTvDateKeysForDepartment(startDate, endDate, departmentKey) {
+  const dateKeys = getTvDateKeysInRange(startDate, endDate);
+  if (!commercialOnlyDepartmentKeys.has(departmentKey)) return dateKeys;
+  return dateKeys.filter((dateKey) => isTvBusinessDay(toDateOrNull(dateKey)));
+}
+
+function getTvFillingBounds() {
+  const values = getPeriodContextDateValues();
+  const bounds = getDateFilterBounds(values);
+  if (bounds) return bounds;
+
+  const today = toDateOrNull(getTodayInputDate());
+  return {
+    startDate: today,
+    endDate: today,
+  };
+}
+
+function getTopMissingItem(counter, fallbackLabel) {
+  let topLabel = fallbackLabel;
+  let topValue = 0;
+
+  counter.forEach((value, label) => {
+    if (value > topValue) {
+      topValue = value;
+      topLabel = label;
+    }
+  });
+
+  return { label: topLabel, value: topValue };
+}
+
+function getTvFillingAnalysis() {
+  const { startDate, endDate } = getTvFillingBounds();
+
+  const departmentsAnalysis = operationalDepartmentKeys.map((departmentKey) => {
+    const department = departments[departmentKey];
+    const dateKeys = getTvDateKeysForDepartment(startDate, endDate, departmentKey);
+    const shiftOptions = getDepartmentShiftOptions(departmentKey);
+    const indicators = (department.indicators || []).filter((indicator) => indicator.goal !== "tracking");
+    const expectedTotal = dateKeys.length * shiftOptions.length * indicators.length;
+    const filledKeys = new Set();
+
+    (department.launches || []).forEach((launch) => {
+      const launchDate = toDateOrNull(launch.date);
+      if (!launchDate || !isDateInsidePeriod(launchDate, startDate, endDate)) return;
+      filledKeys.add(
+        [
+          getTvDateKey(launchDate),
+          normalizeDepartmentShift(launch.shift, departmentKey),
+          normalizeTextKey(launch.indicator),
+        ].join("|"),
+      );
+    });
+
+    const missingByShift = new Map(shiftOptions.map((shift) => [shift, 0]));
+    const missingByDate = new Map(dateKeys.map((dateKey) => [dateKey, 0]));
+    let completedTotal = 0;
+
+    dateKeys.forEach((dateKey) => {
+      shiftOptions.forEach((shift) => {
+        indicators.forEach((indicator) => {
+          const key = [dateKey, shift, normalizeTextKey(indicator.name)].join("|");
+          if (filledKeys.has(key)) {
+            completedTotal += 1;
+            return;
+          }
+
+          missingByShift.set(shift, (missingByShift.get(shift) || 0) + 1);
+          missingByDate.set(dateKey, (missingByDate.get(dateKey) || 0) + 1);
+        });
+      });
+    });
+
+    const missingTotal = Math.max(0, expectedTotal - completedTotal);
+    const coverage = expectedTotal ? Math.round((completedTotal / expectedTotal) * 100) : 100;
+    const topShift = getTopMissingItem(missingByShift, "Sem pendência");
+    const topDate = getTopMissingItem(missingByDate, "Sem pendência");
+
+    return {
+      department: department.label,
+      expectedTotal,
+      completedTotal,
+      missingTotal,
+      missingDays: Array.from(missingByDate.values()).filter((value) => value > 0).length,
+      coverage,
+      topShift,
+      topDate,
+    };
+  });
+
+  const expectedTotal = departmentsAnalysis.reduce((sum, item) => sum + item.expectedTotal, 0);
+  const completedTotal = departmentsAnalysis.reduce((sum, item) => sum + item.completedTotal, 0);
+  const missingTotal = departmentsAnalysis.reduce((sum, item) => sum + item.missingTotal, 0);
+  const coverage = expectedTotal ? Math.round((completedTotal / expectedTotal) * 100) : 100;
+
+  return {
+    periodLabel: getActivePeriodLabel(),
+    expectedTotal,
+    completedTotal,
+    missingTotal,
+    coverage,
+    departments: departmentsAnalysis
+      .filter((item) => item.missingTotal > 0)
+      .sort((left, right) => right.missingTotal - left.missingTotal)
+      .slice(0, 4),
+  };
+}
+
+function renderTvFillingAnalysis(analysis) {
+  const tone = analysis.coverage >= 95 ? "success" : analysis.coverage >= 80 ? "warn" : "danger";
+  const rows = analysis.departments.length
+    ? analysis.departments
+        .map(
+          (item) => `
+            <article class="tv-filling-row">
+              <div>
+                <strong>${escapeHtml(item.department)}</strong>
+                <span>${item.coverage}% preenchido · ${item.missingTotal} pendências</span>
+              </div>
+              <div>
+                <small>Turno mais pendente</small>
+                <strong>${escapeHtml(item.topShift.label)}</strong>
+              </div>
+              <div>
+                <small>Dia crítico</small>
+                <strong>${escapeHtml(formatDateLabel(item.topDate.label))}</strong>
               </div>
             </article>
-          `;
-        })
-        .join("");
-
-      return `
-        <section class="tv-department-lane">
-          <header class="tv-department-header">
-            <h3>${escapeHtml(department.label)}</h3>
-            <div class="tv-lane-status" aria-label="Resumo dos indicadores do departamento">
-              <span><i class="status-dot ok"></i>${departmentCounts.success} na meta</span>
-              <span><i class="status-dot warn"></i>${departmentCounts.warn} em atenção</span>
-              <span><i class="status-dot danger"></i>${departmentCounts.danger} críticos</span>
-            </div>
-          </header>
-          <div class="tv-kanban-stack">${indicatorCards}</div>
-        </section>
+          `,
+        )
+        .join("")
+    : `
+        <article class="tv-filling-row tv-filling-complete">
+          <div>
+            <strong>Preenchimento completo no período</strong>
+            <span>Todos os setores, turnos e indicadores previstos possuem registro.</span>
+          </div>
+        </article>
       `;
-    })
-    .join("");
 
-  qs("#tvClock").textContent = `Atualizado ${new Date().toLocaleTimeString("pt-BR", {
+  return `
+    <section class="tv-insight-card tv-filling-analysis">
+      <div class="tv-card-heading">
+        <p class="eyebrow light">Análise de preenchimento</p>
+        <h3>Setores, turnos e dias sem registro</h3>
+      </div>
+      <div class="tv-filling-score ${tone}">
+        <div>
+          <span>${escapeHtml(analysis.periodLabel)}</span>
+          <strong>${analysis.coverage}%</strong>
+          <small>${formatNumber(analysis.completedTotal)} de ${formatNumber(analysis.expectedTotal)} registros previstos</small>
+        </div>
+        <em>${formatNumber(analysis.missingTotal)} pendências</em>
+      </div>
+      <div class="tv-filling-list">
+        ${rows}
+      </div>
+    </section>
+  `;
+}
+
+function updateTvClock() {
+  const clock = qs("#tvClock");
+  if (!clock) return;
+  const time = new Date().toLocaleTimeString("pt-BR", {
     hour: "2-digit",
     minute: "2-digit",
-  })}`;
+  });
+  clock.innerHTML = `${renderTvIcon("clock")}<span>Atualizado ${time}</span>`;
+}
+
+function renderTv() {
+  const { summary, sectors, alerts, executiveReadings } = tvDashboardData;
+  const orderedSectors = [...sectors].sort((left, right) => left.rank - right.rank);
+  const totalIndicators = orderedSectors.reduce((sum, sector) => sum + sector.indicators.length, 0);
+  const tvSummary = { ...summary, totalIndicators };
+  const summaryCards = [
+    {
+      title: "Total de Indicadores",
+      value: totalIndicators,
+      tone: "neutral",
+      icon: "clipboard",
+    },
+    {
+      title: "Total na Meta",
+      value: tvSummary.onTarget,
+      tone: "success",
+      icon: "target",
+    },
+    {
+      title: "Total em Atenção",
+      value: tvSummary.attention,
+      tone: "warn",
+      icon: "alert",
+    },
+    {
+      title: "Total Críticos",
+      value: tvSummary.critical,
+      tone: "danger",
+      icon: "alert",
+    },
+  ];
+
+  qs("#tvSummary").innerHTML = `
+    <section class="tv-summary-section">
+      <div class="tv-summary-grid">
+        ${summaryCards.map(renderTvSummaryCard).join("")}
+        ${renderTvHealthGauge(tvSummary)}
+      </div>
+    </section>
+  `;
+
+  qs("#tvCards").innerHTML = `
+    <section class="tv-main-layout">
+      <div class="tv-sector-area">
+        <div class="tv-section-title">
+          <p class="eyebrow light">Desempenho por setor</p>
+          <h3>Principais indicadores</h3>
+        </div>
+        <div class="tv-sector-grid">
+          ${orderedSectors.map(renderTvSectorCard).join("")}
+        </div>
+      </div>
+      ${renderTvPriorityAlertsTable(alerts)}
+    </section>
+    <section class="tv-insight-grid">
+      ${renderTvExecutiveReadings(executiveReadings)}
+      ${renderTvFillingAnalysis(getTvFillingAnalysis())}
+    </section>
+  `;
+
+  updateTvClock();
 }
 
 function renderAll() {
@@ -6009,6 +6733,7 @@ function renderAll() {
   populateDepartmentSelect();
   renderUser();
   renderIndicatorOptions();
+  syncLaunchShiftOptions();
   renderSummary();
   renderKpis();
   renderLineCharts();
@@ -6017,7 +6742,6 @@ function renderAll() {
   renderActions();
   renderManagementTreatments();
   renderFiveS();
-  renderAnalyses();
   renderTv();
 }
 
@@ -6037,8 +6761,8 @@ function applyPeriodFilter(nextPeriod, options = {}) {
   if (periodSelect && periodSelect.value !== normalizedPeriod) {
     periodSelect.value = normalizedPeriod;
   }
-
   syncMonthFilterControl();
+
   renderAll();
 
   if (showFeedback && periodSelect) {
@@ -6057,7 +6781,8 @@ function setSidebarOpen(nextOpen) {
 
 function setView(view) {
   if (!currentUser) return;
-  if (!isManagement() && (view === "tv" || view === "treatments" || view === "analyses")) return;
+  if (view === "analyses") view = "dashboard";
+  if (!isManagement() && (view === "tv" || view === "treatments")) return;
   if (view === "fiveS") return;
   if (isManagement() && (view === "launches" || view === "actions")) view = "dashboard";
 
@@ -6076,7 +6801,6 @@ function setView(view) {
   setSidebarOpen(false);
   if (view === "dashboard") renderLineCharts();
   if (view === "treatments") renderManagementTreatments();
-  if (view === "analyses") renderAnalyses();
   if (view === "fiveS") renderFiveS();
   if (view === "tv") renderTv();
 }
@@ -6243,9 +6967,8 @@ function setupInteractions() {
   periodSelect.addEventListener("change", onPeriodChange);
   periodSelect.addEventListener("input", onPeriodChange);
 
-    const monthFilter = qs("#monthFilter");
+  const monthFilter = qs("#monthFilter");
   const yearFilter = qs("#yearFilter");
-
   const onMonthFilterChange = () => {
     if (!setSelectedMonthFilterFromControls()) return;
 
@@ -6255,7 +6978,6 @@ function setupInteractions() {
     renderAll();
     showToast(`Mês alterado para ${formatMonthFilterLabel(selectedMonthFilter)}.`);
   };
-
   monthFilter?.addEventListener("change", onMonthFilterChange);
   yearFilter?.addEventListener("change", onMonthFilterChange);
 
@@ -6333,7 +7055,7 @@ function setupInteractions() {
       indicator: String(data.get("indicator")),
       value: indicator ? normalizeValue(value, indicator) : String(data.get("value")),
       numericValue: value,
-      shift: normalizeLaunchShift(data.get("shift")),
+      shift: normalizeDepartmentShift(data.get("shift")),
       date: String(data.get("date")),
       comment: String(data.get("comment")),
       formulaData: formulaPayload,
@@ -6378,10 +7100,10 @@ function setupInteractions() {
     setView("launches");
     showToast(
       wasEditing
-        ? "Lançamento atualizado."
+        ? "Resultado editado."
         : remotePersistenceActive()
-          ? "Resultado salvo na base SQL."
-          : "Resultado salvo no protótipo.",
+          ? "Resultado incluído na base SQL."
+          : "Resultado incluído.",
     );
   });
 
@@ -6404,8 +7126,6 @@ function setupInteractions() {
     if (action === "delete") {
       deleteRecord(recordId);
     }
-  });
-
   });
 
   document.addEventListener("click", (event) => {
@@ -6526,16 +7246,17 @@ function setupInteractions() {
     const recordId = editingRecordId || generateRecordId();
     const filePayload = await buildRecordFilePayload(recordId, file, existingRecord);
     const nextRecord = {
-    id: recordId,
-    type,
-    indicator: String(data.get("indicator")),
-    owner: String(data.get("owner")),
-    dueDate: String(data.get("dueDate")),
-    recordDate: String(data.get("recordDate")),
-    status,
-    description: String(data.get("description")),
-    file: filePayload.file,
-};
+      id: recordId,
+      type,
+      indicator: String(data.get("indicator")),
+      owner: String(data.get("owner")),
+      dueDate: String(data.get("dueDate")),
+      recordDate: String(data.get("recordDate")),
+      status,
+      description: String(data.get("description")),
+      file: filePayload.file,
+    };
+
     try {
       await persistSupabaseActionRecord(nextRecord, selectedDepartmentKey);
     } catch (error) {
@@ -6559,12 +7280,12 @@ function setupInteractions() {
     renderAll();
     setView("actions");
     showToast(
-  wasEditing
-     ? "Registro editado."
-     : remotePersistenceActive()
-      ? "Registro incluído na base SQL."
-      : "Registro incluído.",
-);
+      wasEditing
+        ? "Registro editado."
+        : remotePersistenceActive()
+          ? "Registro incluído na base SQL."
+          : "Registro incluído.",
+    );
   });
 }
 
@@ -6580,5 +7301,9 @@ window.addEventListener("resize", () => {
   if (!currentUser) return;
   if (currentView === "dashboard") renderLineCharts();
 });
-boot();
 
+window.setInterval(() => {
+  if (currentUser && currentView === "tv") updateTvClock();
+}, 30000);
+
+boot();
