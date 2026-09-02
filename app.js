@@ -194,11 +194,26 @@ const statusLabel = {
 };
 
 const statusColor = {
-  success: "#36d39e",
-  warn: "#f1c453",
-  danger: "#ff7385",
-  tracking: "#7ca4ff",
-  neutral: "#8292aa",
+  success: "#22d285",
+  warn: "#ffb000",
+  danger: "#ff6469",
+  tracking: "#3b82f6",
+  neutral: "#7d8da8",
+};
+
+const chartTheme = {
+  fontFamily: "Roboto, Inter, ui-sans-serif, system-ui, sans-serif",
+  plotBackground: "rgba(16, 29, 58, 0.52)",
+  markerFill: "#0b1730",
+  axisText: "#92a4c0",
+  valueText: "#f4f7ff",
+  tooltipBackground: "rgba(16, 29, 58, 0.94)",
+  tooltipBorder: "#2d3d5e",
+  guide: "rgba(146, 164, 192, 0.32)",
+  lineGlow: "#7cb5ff",
+  analysisStart: "#3b82f6",
+  analysisMiddle: "#22d285",
+  analysisEnd: "#ffb000",
 };
 
 function getTodayInputDate() {
@@ -855,7 +870,7 @@ function encodeSupabaseFilterValue(value) {
 
 function launchToSupabaseRow(launch, departmentKey = selectedDepartmentKey) {
   const indicator = getIndicatorByName(departmentKey, launch.indicator);
-  const formulaType = getLaunchFormulaType(launch.indicator);
+  const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator);
   const numericValue = getLaunchNumericValue(launch, indicator);
 
   return {
@@ -1037,6 +1052,13 @@ async function loadSupabaseState() {
     if (!department) return;
     department.records.push(supabaseRowToActionRecord(row));
   });
+
+  const migratedReceivingLaunches = migrateReceivingAverageLaunches();
+  if (migratedReceivingLaunches.length > 0) {
+    await Promise.all(
+      migratedReceivingLaunches.map(({ departmentKey, launch }) => persistSupabaseLaunch(launch, departmentKey)),
+    );
+  }
 
   operationalDepartmentKeys.forEach((departmentKey) => rebuildIndicatorsFromLaunches(departmentKey));
   fiveSAuditRecords = (fiveSRows || []).map((row) => supabaseRowToFiveSAuditRecord(row));
@@ -1581,8 +1603,8 @@ function getCardDetails(indicator) {
     const rows = rowsWithFields(["releaseTotalHours", "releasedReceipts"]);
     if (rows.length > 0) {
       return [
-        ["Horas trabalhadas", `${formatNumber(sumField(rows, "releaseTotalHours"))} h`],
-        ["Total de recebimentos", formatNumber(sumField(rows, "releasedReceipts"))],
+        ["Tempo total", `${formatNumber(sumField(rows, "releaseTotalHours"))} h`],
+        ["Recebimentos", formatNumber(sumField(rows, "releasedReceipts"))],
       ];
     }
   }
@@ -2186,6 +2208,11 @@ function restorePrototypeState() {
 
   ensureLaunchIds();
   ensureRecordMetadata();
+  const migratedReceivingLaunches = migrateReceivingAverageLaunches();
+  if (migratedReceivingLaunches.length > 0) {
+    operationalDepartmentKeys.forEach((departmentKey) => rebuildIndicatorsFromLaunches(departmentKey));
+    writePrototypeState();
+  }
   syncIdCountersFromState();
 }
 
@@ -2245,6 +2272,61 @@ function getLaunchNumericValue(launch, indicator = null) {
   if (Number.isFinite(parsed)) return parsed;
   if (indicator && Number.isFinite(indicator.value)) return Number(indicator.value);
   return NaN;
+}
+
+function getFormulaNumber(rawValue) {
+  const directNumber = Number(rawValue);
+  if (Number.isFinite(directNumber)) return directNumber;
+  return parseLocalizedNumber(rawValue);
+}
+
+function calculateReceivingAverageMinutesFromPayload(formulaType, formulaPayload) {
+  const payload = formulaPayload && typeof formulaPayload === "object" ? formulaPayload : {};
+
+  if (formulaType === "recebimento_tempo_liberacao") {
+    const totalHours = getFormulaNumber(payload.releaseTotalHours);
+    const totalReceipts = getFormulaNumber(payload.releasedReceipts);
+    if (!Number.isFinite(totalHours) || !Number.isFinite(totalReceipts) || totalReceipts <= 0) return NaN;
+    return (totalHours * 60) / totalReceipts;
+  }
+
+  if (formulaType === "tempo_recebimento") {
+    const totalHours = getFormulaNumber(payload.receiptHours);
+    const totalReceipts = getFormulaNumber(payload.receivedLoads);
+    if (!Number.isFinite(totalHours) || !Number.isFinite(totalReceipts) || totalReceipts <= 0) return NaN;
+    return (totalHours * 60) / totalReceipts;
+  }
+
+  return NaN;
+}
+
+function migrateReceivingAverageLaunches() {
+  const migratedLaunches = [];
+
+  operationalDepartmentKeys.forEach((departmentKey) => {
+    const department = departments[departmentKey];
+    if (!department || !Array.isArray(department.launches)) return;
+
+    department.launches = department.launches.map((launch) => {
+      const indicator = getIndicatorByName(departmentKey, launch.indicator);
+      const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator);
+      const recalculatedValue = calculateReceivingAverageMinutesFromPayload(formulaType, launch.formulaData);
+      if (!Number.isFinite(recalculatedValue)) return launch;
+
+      const currentValue = getLaunchNumericValue(launch, indicator);
+      if (Number.isFinite(currentValue) && Math.abs(currentValue - recalculatedValue) < 0.005) return launch;
+
+      const migratedLaunch = {
+        ...launch,
+        value: indicator ? normalizeValue(recalculatedValue, indicator) : recalculatedValue,
+        numericValue: recalculatedValue,
+      };
+      migratedLaunches.push({ departmentKey, launch: migratedLaunch });
+      return migratedLaunch;
+    });
+  });
+
+  return migratedLaunches;
 }
 
 function normalizeTextKey(value) {
@@ -2481,6 +2563,16 @@ function getLaunchFormulaType(indicatorName) {
   return null;
 }
 
+function getLaunchFormulaTypeForDepartment(departmentKey, indicatorName) {
+  const previousDepartmentKey = selectedDepartmentKey;
+  selectedDepartmentKey = departmentKey;
+  try {
+    return getLaunchFormulaType(indicatorName);
+  } finally {
+    selectedDepartmentKey = previousDepartmentKey;
+  }
+}
+
 const launchFormulaDefinitions = {
   acuracidade: {
     title: "Cálculo de Acuracidade",
@@ -2542,7 +2634,7 @@ launchFormulaDefinitions.recebimento_eficiencia = {
 
 launchFormulaDefinitions.recebimento_tempo_liberacao = {
   title: "Cálculo de Tempo Médio de Recebimento",
-  hint: "Tempo médio (min) = (Total de horas trabalhadas / Total de recebimentos) x 60.",
+  hint: "Tempo médio (min) = (Total de horas trabalhadas x 60) / Total de recebimentos. Ex.: (8 h x 60) / 9 = 53,33 min.",
   fields: ["releaseTotalHours", "releasedReceipts"],
   allowNegative: false,
   resultSuffix: " min",
@@ -2651,7 +2743,7 @@ launchFormulaDefinitions.estoque_produtividade_individual_contagens = {
 
 launchFormulaDefinitions.tempo_recebimento = {
   title: "Cálculo de Tempo de Recebimento",
-  hint: "Tempo médio (min) = (Tempo total de recebimento em horas / Cargas recebidas) x 60.",
+  hint: "Tempo médio (min) = (Tempo total de recebimento em horas x 60) / Quantidade de recebimentos.",
   fields: ["receivedLoads", "receiptHours"],
   allowNegative: false,
   resultSuffix: " min",
@@ -2902,7 +2994,8 @@ function computeLaunchFormulaValue(formulaType) {
     const releaseTotalHours = getLaunchFormulaFieldValue("releaseTotalHours");
     const releasedReceipts = getLaunchFormulaFieldValue("releasedReceipts");
     if (!Number.isFinite(releaseTotalHours) || !Number.isFinite(releasedReceipts) || releasedReceipts <= 0) return NaN;
-    return (releaseTotalHours / releasedReceipts) * 60;
+    const totalMinutes = releaseTotalHours * 60;
+    return totalMinutes / releasedReceipts;
   }
 
   if (formulaType === "recebimento_erros_armazenagem") {
@@ -3023,7 +3116,8 @@ function computeLaunchFormulaValue(formulaType) {
     const receivedLoads = getLaunchFormulaFieldValue("receivedLoads");
     const receiptHours = getLaunchFormulaFieldValue("receiptHours");
     if (!Number.isFinite(receivedLoads) || !Number.isFinite(receiptHours) || receivedLoads <= 0) return NaN;
-    return (receiptHours / receivedLoads) * 60;
+    const totalMinutes = receiptHours * 60;
+    return totalMinutes / receivedLoads;
   }
 
   if (formulaType === "avarias_recebimento") {
@@ -3571,21 +3665,8 @@ function drawLineChart(canvas, history, lineColor, indicator, options = {}) {
     y: yFor(item.value),
   }));
 
-  ctx.fillStyle = "#111826";
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.strokeStyle = "#273248";
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i += 1) {
-    const y = padding.top + (plotHeight / 4) * i;
-    ctx.beginPath();
-    ctx.moveTo(padding.left, y);
-    ctx.lineTo(width - padding.right, y);
-    ctx.stroke();
-  }
-
   const gradient = ctx.createLinearGradient(0, padding.top, width, height);
-  gradient.addColorStop(0, "#88a8ff");
+  gradient.addColorStop(0, chartTheme.lineGlow);
   gradient.addColorStop(1, lineColor);
 
   ctx.beginPath();
@@ -3603,7 +3684,7 @@ function drawLineChart(canvas, history, lineColor, indicator, options = {}) {
   points.forEach((point, index) => {
     const { x, y } = point;
     const pointRadius = hoverIndex === index ? 5 : 3.8;
-    ctx.fillStyle = "#111826";
+    ctx.fillStyle = chartTheme.markerFill;
     ctx.beginPath();
     ctx.arc(x, y, pointRadius, 0, Math.PI * 2);
     ctx.fill();
@@ -3628,7 +3709,7 @@ function drawLineChart(canvas, history, lineColor, indicator, options = {}) {
     valueLabelIndexes.add(pointCount - 1);
   }
 
-  ctx.font = "700 10px Roboto, Inter, system-ui, sans-serif";
+  ctx.font = `700 10px ${chartTheme.fontFamily}`;
   ctx.textAlign = "center";
   history.forEach((item, index) => {
     const { x } = points[index];
@@ -3636,7 +3717,7 @@ function drawLineChart(canvas, history, lineColor, indicator, options = {}) {
     if (!isVisibleDate) return;
 
     const dateText = formatShortDate(item.date);
-    ctx.fillStyle = "#95a4bd";
+    ctx.fillStyle = chartTheme.axisText;
     ctx.textBaseline = "alphabetic";
     ctx.fillText(dateText, x, height - 8);
   });
@@ -3647,7 +3728,7 @@ function drawLineChart(canvas, history, lineColor, indicator, options = {}) {
     if (!point || !item) return;
 
     const valueText = formatChartValue(indicator, item.value);
-    ctx.font = "700 9.5px Roboto, Inter, system-ui, sans-serif";
+    ctx.font = `700 9.5px ${chartTheme.fontFamily}`;
     const textWidth = ctx.measureText(valueText).width;
     const tagWidth = textWidth + 10;
     const tagHeight = 16;
@@ -3659,13 +3740,13 @@ function drawLineChart(canvas, history, lineColor, indicator, options = {}) {
     const tagY = preferredY <= padding.top + 2 ? point.y + 8 : preferredY;
 
     drawRoundedRect(ctx, tagX, tagY, tagWidth, tagHeight, 6);
-    ctx.fillStyle = "rgba(17, 24, 38, 0.94)";
+    ctx.fillStyle = chartTheme.tooltipBackground;
     ctx.fill();
-    ctx.strokeStyle = "#33445f";
+    ctx.strokeStyle = chartTheme.tooltipBorder;
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    ctx.fillStyle = "#e9effb";
+    ctx.fillStyle = chartTheme.valueText;
     ctx.textBaseline = "middle";
     ctx.fillText(valueText, tagX + tagWidth / 2, tagY + tagHeight / 2 + 0.2);
   });
@@ -3674,7 +3755,7 @@ function drawLineChart(canvas, history, lineColor, indicator, options = {}) {
     const point = points[hoverIndex];
     const item = history[hoverIndex];
 
-    ctx.strokeStyle = "rgba(149, 171, 211, 0.34)";
+    ctx.strokeStyle = chartTheme.guide;
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
@@ -3686,7 +3767,7 @@ function drawLineChart(canvas, history, lineColor, indicator, options = {}) {
     const dateText = formatDate(item.date);
     const valueText = formatChartValue(indicator, item.value);
     const tooltipText = `${dateText} | ${valueText}`;
-    ctx.font = "700 10px Roboto, Inter, system-ui, sans-serif";
+    ctx.font = `700 10px ${chartTheme.fontFamily}`;
     const textWidth = ctx.measureText(tooltipText).width;
     const tooltipWidth = textWidth + 14;
     const tooltipHeight = 20;
@@ -3697,13 +3778,13 @@ function drawLineChart(canvas, history, lineColor, indicator, options = {}) {
     const tooltipY = Math.max(padding.top + 4, point.y - 30);
 
     drawRoundedRect(ctx, tooltipX, tooltipY, tooltipWidth, tooltipHeight, 6);
-    ctx.fillStyle = "rgba(17, 24, 38, 0.97)";
+    ctx.fillStyle = chartTheme.tooltipBackground;
     ctx.fill();
-    ctx.strokeStyle = "#33445f";
+    ctx.strokeStyle = chartTheme.tooltipBorder;
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    ctx.fillStyle = "#edf3ff";
+    ctx.fillStyle = chartTheme.valueText;
     ctx.textBaseline = "middle";
     ctx.fillText(tooltipText, tooltipX + tooltipWidth / 2, tooltipY + tooltipHeight / 2 + 0.2);
   }
@@ -4075,8 +4156,8 @@ function applyRecebimentoLaunchFormulaDetails(indicator, formulaType, payload) {
   if (formulaType === "recebimento_tempo_liberacao") {
     if (!Number.isFinite(payload.releaseTotalHours) || !Number.isFinite(payload.releasedReceipts)) return;
     indicator.details = [
-      ["Horas trabalhadas", `${formatNumber(payload.releaseTotalHours)} h`],
-      ["Total de recebimentos", formatNumber(payload.releasedReceipts)],
+      ["Tempo total", `${formatNumber(payload.releaseTotalHours)} h`],
+      ["Recebimentos", formatNumber(payload.releasedReceipts)],
     ];
   }
 
@@ -5418,12 +5499,9 @@ function drawAnalysisMonthlyChart(canvas, data) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = "#101a29";
-  ctx.fillRect(0, 0, width, height);
-
   if (!Array.isArray(data) || data.length === 0) {
-    ctx.fillStyle = "#aebdd2";
-    ctx.font = "800 13px Roboto, Inter, system-ui, sans-serif";
+    ctx.fillStyle = chartTheme.axisText;
+    ctx.font = `800 13px ${chartTheme.fontFamily}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText("Sem histórico mensal suficiente para análise.", width / 2, height / 2);
@@ -5441,25 +5519,19 @@ function drawAnalysisMonthlyChart(canvas, data) {
     item,
   }));
 
-  ctx.strokeStyle = "#263552";
-  ctx.lineWidth = 1;
-  ctx.font = "700 10px Roboto, Inter, system-ui, sans-serif";
+  ctx.font = `700 10px ${chartTheme.fontFamily}`;
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
   [0, 25, 50, 75, 100].forEach((tick) => {
     const y = yFor(tick);
-    ctx.beginPath();
-    ctx.moveTo(padding.left, y);
-    ctx.lineTo(width - padding.right, y);
-    ctx.stroke();
-    ctx.fillStyle = "#8999b4";
+    ctx.fillStyle = chartTheme.axisText;
     ctx.fillText(`${tick}%`, padding.left - 8, y);
   });
 
   const gradient = ctx.createLinearGradient(padding.left, 0, width - padding.right, 0);
-  gradient.addColorStop(0, "#18b8ff");
-  gradient.addColorStop(0.6, "#36d39e");
-  gradient.addColorStop(1, "#f1c453");
+  gradient.addColorStop(0, chartTheme.analysisStart);
+  gradient.addColorStop(0.6, chartTheme.analysisMiddle);
+  gradient.addColorStop(1, chartTheme.analysisEnd);
 
   ctx.beginPath();
   points.forEach((point, index) => {
@@ -5474,7 +5546,7 @@ function drawAnalysisMonthlyChart(canvas, data) {
 
   points.forEach((point) => {
     const tone = getAnalysisToneByScore(point.item.value);
-    ctx.fillStyle = "#101a29";
+    ctx.fillStyle = chartTheme.markerFill;
     ctx.beginPath();
     ctx.arc(point.x, point.y, 4.5, 0, Math.PI * 2);
     ctx.fill();
@@ -5482,13 +5554,13 @@ function drawAnalysisMonthlyChart(canvas, data) {
     ctx.lineWidth = 2.4;
     ctx.stroke();
 
-    ctx.fillStyle = "#eef5ff";
-    ctx.font = "800 10.5px Roboto, Inter, system-ui, sans-serif";
+    ctx.fillStyle = chartTheme.valueText;
+    ctx.font = `800 10.5px ${chartTheme.fontFamily}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "bottom";
     ctx.fillText(`${formatNumber(point.item.value)}%`, point.x, point.y - 10);
 
-    ctx.fillStyle = "#9aacc7";
+    ctx.fillStyle = chartTheme.axisText;
     ctx.textBaseline = "top";
     ctx.fillText(point.item.label, point.x, height - padding.bottom + 14);
   });
