@@ -1271,8 +1271,7 @@ function getDepartmentDateValues(department) {
 }
 
 function getPeriodContextDateValues() {
-  const consolidatedManagementViews = ["tv", "treatments"];
-  if (isManagement() && consolidatedManagementViews.includes(currentView)) {
+  if (isManagement()) {
     return operationalDepartmentKeys.flatMap((key) => getDepartmentDateValues(departments[key]));
   }
 
@@ -3493,6 +3492,12 @@ function renderNavigation() {
   if (departmentSelect) {
     departmentSelect.disabled = !isManagement() || consolidatedManagementViews.includes(currentView);
   }
+  const managementExportActions = qs("#managementExportActions");
+  if (managementExportActions) {
+    const showManagementExports = isManagement() && (currentView === "dashboard" || currentView === "tv");
+    managementExportActions.classList.toggle("hidden", !showManagementExports);
+    managementExportActions.hidden = !showManagementExports;
+  }
   syncMonthFilterControl();
 }
 
@@ -5212,16 +5217,23 @@ async function updateRecordStatus(recordId, nextStatus, departmentKey = selected
 }
 
 function getConsolidatedManagementRecords() {
-  return operationalDepartmentKeys
-    .flatMap((departmentKey) => {
-      const department = departments[departmentKey];
-      return (department.records || []).map((record) => ({
-        departmentKey,
-        departmentLabel: department.label,
-        record,
-        recordDate: getRecordDate(record),
-        tone: getRecordTone(record),
-      }));
+  const records = operationalDepartmentKeys.flatMap((departmentKey) => {
+    const department = departments[departmentKey];
+    return (department.records || []).map((record) => ({
+      departmentKey,
+      departmentLabel: department.label,
+      record,
+      recordDate: getRecordDate(record),
+      tone: getRecordTone(record),
+    }));
+  });
+  const bounds = getDateFilterBounds(records.map((row) => row.recordDate));
+
+  return records
+    .filter((row) => {
+      if (!bounds) return true;
+      const recordDate = toDateOrNull(row.recordDate);
+      return recordDate && isDateInsidePeriod(recordDate, bounds.startDate, bounds.endDate);
     })
     .sort((left, right) => {
       const leftDate = toDateOrNull(left.recordDate);
@@ -5236,7 +5248,7 @@ function renderManagementTreatments() {
   if (!tableBody) return;
 
   const records = getConsolidatedManagementRecords();
-  qs("#managementActionPeriod").textContent = "Consolidado";
+  qs("#managementActionPeriod").textContent = getActivePeriodLabel();
 
   const syncManagementSelectFilter = (selector, filterKey, values, formatter = (value) => value) => {
     const input = qs(selector);
@@ -6671,6 +6683,151 @@ function getTvFillingAnalysis() {
   };
 }
 
+function getTvSectorStatusFromTone(tone) {
+  if (tone === "success") return "best";
+  if (tone === "warn") return "medium";
+  if (tone === "danger") return "critical";
+  return "neutral";
+}
+
+function isTvProductivityIndicator(indicator) {
+  return normalizeTextKey(indicator?.name).includes("produtividade individual");
+}
+
+function formatTvIndicatorValue(row) {
+  if (!row || row.accumulatedValue === null || row.accumulatedValue === undefined) return "Sem dados";
+  return formatMetric(row.indicator, row.accumulatedValue);
+}
+
+function buildTvSectorData() {
+  return operationalDepartmentKeys.map((departmentKey, index) => {
+    const stats = getDepartmentAnalysisStats(departmentKey);
+    const indicators = stats.rows
+      .filter((row) => !isTvProductivityIndicator(row.indicator))
+      .map((row) => ({
+        name: row.indicator.name,
+        accumulated: formatTvIndicatorValue(row),
+        target: formatTargetValue(row.indicator),
+        status: row.status,
+      }));
+    const productivityRow = stats.rows.find((row) => isTvProductivityIndicator(row.indicator));
+
+    return {
+      rank: index + 1,
+      name: stats.label,
+      health: Number.isFinite(Number(stats.score)) ? Math.round(stats.score) : 0,
+      status: getTvSectorStatusFromTone(stats.tone),
+      counts: stats.counts,
+      indicators,
+      productivity: productivityRow
+        ? {
+            name: productivityRow.indicator.name,
+            value: formatTvIndicatorValue(productivityRow),
+          }
+        : null,
+    };
+  });
+}
+
+function getTvPriorityAlerts(rows) {
+  return rows
+    .filter((row) => row.status === "danger" || row.status === "warn")
+    .sort((left, right) => {
+      const riskDiff = getIndicatorRiskWeight(right) - getIndicatorRiskWeight(left);
+      if (riskDiff !== 0) return riskDiff;
+      const gapDiff = getIndicatorGap(right) - getIndicatorGap(left);
+      if (gapDiff !== 0) return gapDiff;
+      return String(left.departmentLabel).localeCompare(String(right.departmentLabel), "pt-BR");
+    })
+    .slice(0, 11)
+    .map((row) => ({
+      indicator: row.indicator.name,
+      sector: row.departmentLabel,
+      accumulated: formatTvIndicatorValue(row),
+      target: formatTargetValue(row.indicator),
+      status: row.status,
+    }));
+}
+
+function buildTvExecutiveReadings(sectors, alerts, fillingAnalysis) {
+  const rankedSectors = [...sectors].sort((left, right) => right.health - left.health);
+  const bestSector = rankedSectors[0];
+  const maxCritical = Math.max(0, ...sectors.map((sector) => sector.counts?.danger || 0));
+  const criticalSectors = sectors
+    .filter((sector) => maxCritical > 0 && (sector.counts?.danger || 0) === maxCritical)
+    .map((sector) => sector.name);
+  const topAlert = alerts[0];
+  const fillingFocus = fillingAnalysis.departments[0];
+
+  return [
+    {
+      tone: "success",
+      label: "Melhor setor",
+      title: bestSector?.name || "Sem dados",
+      icon: "trophy",
+      description: bestSector
+        ? `${bestSector.health}% de saúde no período selecionado.`
+        : "Sem dados no período selecionado.",
+    },
+    {
+      tone: maxCritical > 0 ? "danger" : "success",
+      label: "Setores mais críticos",
+      title: criticalSectors.length ? criticalSectors.join(" e ") : "Sem setores críticos",
+      icon: "alert",
+      description:
+        maxCritical > 0
+          ? `Cada um com ${maxCritical} indicadores críticos.`
+          : "Nenhum indicador crítico no período selecionado.",
+    },
+    {
+      tone: topAlert ? "warn" : "success",
+      label: "Principal risco",
+      title: topAlert?.indicator || "Risco controlado",
+      icon: "health",
+      description: topAlert
+        ? `${topAlert.sector}: acumulado ${topAlert.accumulated} frente à meta ${topAlert.target}.`
+        : "Sem alertas em atenção ou críticos no período.",
+    },
+    {
+      tone: fillingFocus ? "process" : "success",
+      label: "Ritmo de gestão",
+      title: fillingFocus ? "Rotina de preenchimento" : "Preenchimento completo",
+      icon: "checklist",
+      description: fillingFocus
+        ? `${fillingFocus.department}: ${fillingFocus.missingTotal} pendências em ${fillingAnalysis.periodLabel}.`
+        : "Todos os registros previstos foram preenchidos.",
+    },
+  ];
+}
+
+function buildTvDashboardData() {
+  const rows = getOperationalIndicatorRows();
+  const monitoredRows = rows.filter((row) => row.indicator.goal !== "tracking");
+  const statusRows = monitoredRows.filter((row) => isOperationalStatus(row.status));
+  const onTarget = statusRows.filter((row) => row.status === "success").length;
+  const attention = statusRows.filter((row) => row.status === "warn").length;
+  const critical = statusRows.filter((row) => row.status === "danger").length;
+  const sectors = buildTvSectorData();
+  const alerts = getTvPriorityAlerts(statusRows);
+  const fillingAnalysis = getTvFillingAnalysis();
+
+  return {
+    periodLabel: getActivePeriodLabel(),
+    generatedAt: new Date(),
+    summary: {
+      totalIndicators: monitoredRows.length,
+      onTarget,
+      attention,
+      critical,
+      health: monitoredRows.length ? Math.round((onTarget / monitoredRows.length) * 100) : 0,
+    },
+    sectors,
+    alerts,
+    executiveReadings: buildTvExecutiveReadings(sectors, alerts, fillingAnalysis),
+    fillingAnalysis,
+  };
+}
+
 function renderTvFillingAnalysis(analysis) {
   const tone = analysis.coverage >= 95 ? "success" : analysis.coverage >= 80 ? "warn" : "danger";
   const rows = analysis.departments.length
@@ -6735,32 +6892,30 @@ function updateTvClock() {
 }
 
 function renderTv() {
-  const { summary, sectors, alerts, executiveReadings } = tvDashboardData;
+  const { summary, sectors, alerts, executiveReadings, fillingAnalysis } = buildTvDashboardData();
   const orderedSectors = [...sectors].sort((left, right) => left.rank - right.rank);
-  const totalIndicators = orderedSectors.reduce((sum, sector) => sum + sector.indicators.length, 0);
-  const tvSummary = { ...summary, totalIndicators };
   const summaryCards = [
     {
       title: "Total de Indicadores",
-      value: totalIndicators,
+      value: summary.totalIndicators,
       tone: "neutral",
       icon: "clipboard",
     },
     {
       title: "Total na Meta",
-      value: tvSummary.onTarget,
+      value: summary.onTarget,
       tone: "success",
       icon: "target",
     },
     {
       title: "Total em Atenção",
-      value: tvSummary.attention,
+      value: summary.attention,
       tone: "warn",
       icon: "alert",
     },
     {
       title: "Total Críticos",
-      value: tvSummary.critical,
+      value: summary.critical,
       tone: "danger",
       icon: "alert",
     },
@@ -6770,7 +6925,7 @@ function renderTv() {
     <section class="tv-summary-section">
       <div class="tv-summary-grid">
         ${summaryCards.map(renderTvSummaryCard).join("")}
-        ${renderTvHealthGauge(tvSummary)}
+        ${renderTvHealthGauge(summary)}
       </div>
     </section>
   `;
@@ -6790,11 +6945,215 @@ function renderTv() {
     </section>
     <section class="tv-insight-grid">
       ${renderTvExecutiveReadings(executiveReadings)}
-      ${renderTvFillingAnalysis(getTvFillingAnalysis())}
+      ${renderTvFillingAnalysis(fillingAnalysis)}
     </section>
   `;
 
   updateTvClock();
+}
+
+function formatExportDateTime(date = new Date()) {
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getExportFileStamp(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    "-",
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+  ].join("");
+}
+
+function renderExportTable(headers, rows) {
+  const emptyRow = `<tr><td colspan="${headers.length}">Sem dados para o período selecionado.</td></tr>`;
+  return `
+    <table>
+      <thead>
+        <tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
+      </thead>
+      <tbody>
+        ${
+          rows.length
+            ? rows
+                .map(
+                  (row) => `
+                    <tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>
+                  `,
+                )
+                .join("")
+            : emptyRow
+        }
+      </tbody>
+    </table>
+  `;
+}
+
+function getManagementExportRows(data) {
+  const indicatorRows = data.sectors.flatMap((sector) => {
+    const rows = sector.indicators.map((indicator) => [
+      sector.rank,
+      sector.name,
+      indicator.name,
+      indicator.accumulated,
+      indicator.target,
+      getStatusExecutiveLabel(indicator.status),
+    ]);
+    if (sector.productivity) {
+      rows.push([
+        sector.rank,
+        sector.name,
+        sector.productivity.name,
+        sector.productivity.value,
+        "Acompanhamento",
+        "Acompanhamento",
+      ]);
+    }
+    return rows;
+  });
+
+  const alertRows = data.alerts.map((alert, index) => [
+    index + 1,
+    alert.sector,
+    alert.indicator,
+    alert.accumulated,
+    alert.target,
+    getStatusExecutiveLabel(alert.status),
+  ]);
+
+  const fillingRows = data.fillingAnalysis.departments.map((item) => [
+    item.department,
+    `${item.coverage}%`,
+    item.completedTotal,
+    item.expectedTotal,
+    item.missingTotal,
+    item.topShift.label,
+    formatDateLabel(item.topDate.label),
+  ]);
+
+  const readingRows = data.executiveReadings.map((reading) => [
+    reading.label,
+    reading.title,
+    reading.description,
+  ]);
+
+  return { indicatorRows, alertRows, fillingRows, readingRows };
+}
+
+function buildManagementExportHtml(data) {
+  const { indicatorRows, alertRows, fillingRows, readingRows } = getManagementExportRows(data);
+  const summaryRows = [
+    ["Total de Indicadores", data.summary.totalIndicators],
+    ["Total na Meta", data.summary.onTarget],
+    ["Total em Atenção", data.summary.attention],
+    ["Total Críticos", data.summary.critical],
+    ["Saúde Operacional Geral", `${data.summary.health}%`],
+  ];
+
+  return `<!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8" />
+        <title>Painel de Gestão - ${escapeHtml(data.periodLabel)}</title>
+        <style>
+          body {
+            margin: 28px;
+            color: #101820;
+            background: #ffffff;
+            font-family: Arial, sans-serif;
+          }
+          h1 { margin: 0 0 6px; font-size: 28px; }
+          h2 { margin: 24px 0 10px; font-size: 17px; }
+          p { margin: 0 0 18px; color: #4d5b6a; }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 18px;
+            font-size: 11px;
+          }
+          th {
+            color: #ffffff;
+            background: #0f2742;
+            text-align: left;
+          }
+          th,
+          td {
+            padding: 8px;
+            border: 1px solid #cfd8e3;
+            vertical-align: top;
+          }
+          tr:nth-child(even) td { background: #f5f7fb; }
+          @media print {
+            body { margin: 14mm; }
+            h2 { break-after: avoid; }
+            table { break-inside: auto; }
+            tr { break-inside: avoid; }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Panorama Operacional</h1>
+        <p>Período: ${escapeHtml(data.periodLabel)} | Gerado em ${escapeHtml(formatExportDateTime(data.generatedAt))}</p>
+        <h2>Resumo geral</h2>
+        ${renderExportTable(["Indicador", "Valor"], summaryRows)}
+        <h2>Resumo gerencial</h2>
+        ${renderExportTable(["Análise", "Título", "Descrição"], readingRows)}
+        <h2>Principais indicadores por setor</h2>
+        ${renderExportTable(["Ordem", "Setor", "Indicador", "Acumulado", "Meta", "Status"], indicatorRows)}
+        <h2>Alertas prioritários</h2>
+        ${renderExportTable(["Ranking", "Setor", "Indicador", "Acumulado", "Meta", "Status"], alertRows)}
+        <h2>Análise de preenchimento</h2>
+        ${renderExportTable(["Setor", "Cobertura", "Realizados", "Previstos", "Pendências", "Turno mais pendente", "Dia crítico"], fillingRows)}
+      </body>
+    </html>`;
+}
+
+function downloadBlob(fileName, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function exportManagementPdf() {
+  const data = buildTvDashboardData();
+  const popup = window.open("", "_blank", "width=1200,height=900");
+  if (!popup) {
+    showToast("Não foi possível abrir o PDF. Libere pop-ups para exportar.", "warn");
+    return;
+  }
+
+  popup.document.open();
+  popup.document.write(buildManagementExportHtml(data));
+  popup.document.close();
+  window.setTimeout(() => {
+    popup.focus();
+    popup.print();
+  }, 250);
+  showToast("PDF preparado para impressão.");
+}
+
+function exportManagementExcel() {
+  const data = buildTvDashboardData();
+  const stamp = getExportFileStamp(data.generatedAt);
+  const periodSlug = normalizeTextKey(data.periodLabel).replace(/[^a-z0-9]+/g, "-") || "periodo";
+  const fileName = `painel-gestao-${periodSlug}-${stamp}.xls`;
+  downloadBlob(fileName, `\ufeff${buildManagementExportHtml(data)}`, "application/vnd.ms-excel;charset=utf-8");
+  showToast("Excel gerado.");
 }
 
 function renderAll() {
@@ -7030,6 +7389,9 @@ function setupInteractions() {
     renderAll();
     showToast(currentView === "tv" ? "TV atualizada." : "Painel atualizado.");
   });
+
+  qs("#exportPdfButton")?.addEventListener("click", exportManagementPdf);
+  qs("#exportExcelButton")?.addEventListener("click", exportManagementExcel);
 
   const periodSelect = qs("#periodSelect");
   const onPeriodChange = (event) => {

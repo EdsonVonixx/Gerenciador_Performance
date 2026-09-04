@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Vonixx Performance Center | Logística</title>
-    <link rel="stylesheet" href="styles.css?v=20260902-recebimento-tempo-medio" />
+    <link rel="stylesheet" href="styles.css?v=20260904-gestao-filtros-export" />
   </head>
   <body>
     <section class="login-shell" id="loginScreen">
@@ -128,6 +128,10 @@
               <select id="yearFilter" aria-label="Selecionar ano"></select>
             </label>
             <button class="primary-button" id="refreshButton" type="button">Atualizar</button>
+            <div class="export-actions management-only hidden" id="managementExportActions">
+              <button class="ghost-button export-button" id="exportPdfButton" type="button">Gerar PDF</button>
+              <button class="ghost-button export-button" id="exportExcelButton" type="button">Gerar Excel</button>
+            </div>
           </div>
         </header>
 
@@ -946,6 +950,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="/app.js?v=20260902-recebimento-tempo-medio"></script>
+    <script type="module" src="/app.js?v=20260904-gestao-filtros-export"></script>
   </body>
 </html>

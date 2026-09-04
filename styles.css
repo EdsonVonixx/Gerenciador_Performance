@@ -508,6 +508,17 @@ button {
   margin-left: auto;
 }
 
+.export-actions {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+
+.export-button {
+  min-width: 106px;
+  padding: 0 14px;
+}
+
 .app-shell.treatments-mode .topbar-actions {
   display: none !important;
 }
@@ -2014,7 +2025,9 @@ textarea:focus {
   }
 
   .topbar-actions,
+  .export-actions,
   .topbar-actions .primary-button,
+  .topbar-actions .export-button,
   .select-label {
     width: 100%;
   }
