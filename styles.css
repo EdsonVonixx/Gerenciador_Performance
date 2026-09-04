@@ -4626,3 +4626,66 @@ textarea:focus,
   background: #401519;
   border-color: rgba(255, 100, 105, 0.5);
 }
+
+.tv-summary-card .tv-summary-icon,
+.tv-reading-item .tv-reading-icon,
+.tv-alert-icon,
+.tv-updated-badge svg {
+  color: #fff;
+}
+
+button.tv-filling-row {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+
+button.tv-filling-row:hover,
+button.tv-filling-row:focus-visible {
+  border-color: #fff;
+}
+
+.filling-note { color: #fff; font-size: 13px; }
+
+.tv-filling-score .filling-period-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.tv-filling-score .filling-pending-text { color: #fff; font-weight: 800; background: none; }
+.side-history-panel .panel-heading:has(.launch-history-search) { flex-wrap: wrap; gap: 12px; }
+.launch-history-search { flex: 1 1 180px; width: auto; min-width: 0; max-width: 360px; min-height: 38px; }
+@media (max-width: 600px) {
+  .launch-history-search { order: 3; flex-basis: 100%; max-width: none; }
+}
+
+.tv-filling-score { padding: 12px 16px; gap: 12px; flex-wrap: wrap; }
+.tv-filling-score strong { font-size: 30px; line-height: 1.1; margin: 4px 0; }
+.tv-filling-score #exportFillingPdf { margin-left: auto; font-size: 13px; padding: 8px 12px; min-height: 36px; }
+
+.filling-dialog {
+  width: min(1100px, calc(100vw - 32px));
+  max-height: 85vh;
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 24px;
+  color: #fff;
+  background: #0b162c;
+  border: 1px solid #334665;
+  border-radius: 8px;
+}
+
+.filling-dialog::backdrop { background: rgb(0 0 0 / 65%); }
+.filling-dialog header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.filling-dialog header button { width: 40px; height: 40px; flex: 0 0 40px; font-size: 24px; }
+.filling-dialog h2 { font-size: 22px; margin: 0; }
+.filling-filters { display: grid; grid-template-columns: 2fr repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+.filling-filters label { min-width: 0; color: #fff; }
+.filling-filters input, .filling-filters select { width: 100%; min-width: 0; }
+.filling-table { max-height: 45vh; overflow: auto; }
+.filling-table table { width: 100%; }
+.filling-table th { position: sticky; top: 0; background: #0b162c; }
+.filling-table td { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .filling-filters { grid-template-columns: 1fr 1fr; }
+  .filling-filters label:first-child { grid-column: 1 / -1; }
+  .filling-dialog { padding: 16px; }
+}

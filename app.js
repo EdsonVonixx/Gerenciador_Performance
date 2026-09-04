@@ -1374,16 +1374,16 @@ function getActivePeriodLabel() {
   }
 
   const periodLabel = getSelectedOptionLabel("#periodSelect", "Período");
-  return periodLabel;
+  const bounds = getDateFilterBounds();
+  return `${periodLabel} · ${formatDateLabel(getTvDateKey(bounds.startDate))} a ${formatDateLabel(getTvDateKey(bounds.endDate))}`;
 }
 
 function getDateFilterBounds(values = []) {
   if (currentPeriod === "mes") {
-    return getMonthBounds(ensureSelectedMonthFilter(values));
+    return getMonthBounds(ensureSelectedMonthFilter());
   }
 
-  const referenceDate = maxDateFromValues(values);
-  if (!referenceDate) return null;
+  const referenceDate = toDateOrNull(getTodayInputDate());
   return {
     startDate: datePeriodStart(referenceDate, getPeriodWindow()),
     endDate: referenceDate,
@@ -1428,10 +1428,11 @@ function getFilteredHistory(indicator, department = currentDepartment()) {
   const bounds = getDateFilterBounds(history.map((item) => item.date));
 
   if (!bounds) {
-    return history.slice(-Math.min(history.length, getPeriodWindow()));
+    return [];
   }
 
   return history.filter((item) => {
+    if (item.value === null || item.value === undefined || item.value === "" || !Number.isFinite(Number(item.value))) return false;
     const itemDate = toDateOrNull(item.date);
     if (!itemDate) return false;
     return isDateInsidePeriod(itemDate, bounds.startDate, bounds.endDate);
@@ -1441,9 +1442,7 @@ function getFilteredHistory(indicator, department = currentDepartment()) {
 function getIndicatorAverageValue(indicator, department = currentDepartment()) {
   const filteredHistory = getFilteredHistory(indicator, department);
   if (filteredHistory.length === 0) {
-    return indicator.value !== null && indicator.value !== undefined && Number.isFinite(Number(indicator.value))
-      ? Number(indicator.value)
-      : null;
+    return null;
   }
   const total = filteredHistory.reduce((acc, item) => acc + Number(item.value), 0);
   return total / filteredHistory.length;
@@ -1453,9 +1452,9 @@ function getIndicatorAccumulatedValue(indicator, department = currentDepartment(
   return getIndicatorAverageValue(indicator, department);
 }
 
-function getStatus(indicator, department = currentDepartment(), valueOverride = null) {
+function getStatus(indicator, department = currentDepartment(), valueOverride = undefined) {
   const currentValue =
-    typeof valueOverride === "number"
+    valueOverride !== undefined
       ? valueOverride
       : getIndicatorAverageValue(indicator, department);
 
@@ -1531,9 +1530,9 @@ function formatIntegerDisplay(value) {
   }).format(Math.round(Number(value) || 0));
 }
 
-function formatMetric(indicator, valueOverride = null) {
+function formatMetric(indicator, valueOverride = undefined) {
   const currentValue =
-    typeof valueOverride === "number" ? valueOverride : getIndicatorAverageValue(indicator);
+    valueOverride !== undefined ? valueOverride : getIndicatorAverageValue(indicator);
   if (currentValue === null || currentValue === undefined || !Number.isFinite(Number(currentValue))) {
     return "Sem dados";
   }
@@ -1969,8 +1968,7 @@ function getCardDetails(indicator) {
     }
   }
 
-  if (!Array.isArray(indicator.details)) return [];
-  return indicator.details.filter(([label]) => !/^(desvio|diferenca|diferença)/i.test(label.trim()));
+  return [];
 }
 
 function formatTarget(indicator) {
@@ -2221,12 +2219,12 @@ function getFilteredLaunches(department = currentDepartment()) {
   const validIndicators = new Set((department.indicators || []).map((indicator) => normalizeTextKey(indicator.name)));
   const validLaunches = department.launches.filter((launch) => validIndicators.has(normalizeTextKey(launch.indicator)));
   const bounds = getDateFilterBounds(validLaunches.map((launch) => launch.date));
-  if (!bounds) return validLaunches;
+  if (!bounds) return [];
 
   return validLaunches
     .filter((launch) => {
       const launchDate = toDateOrNull(launch.date);
-      if (!launchDate) return true;
+      if (!launchDate) return false;
       return isDateInsidePeriod(launchDate, bounds.startDate, bounds.endDate);
     })
     .sort((left, right) => {
@@ -2247,12 +2245,12 @@ function getFilteredRecords(department = currentDepartment()) {
   if (!Array.isArray(department.records) || department.records.length === 0) return [];
 
   const bounds = getDateFilterBounds(department.records.map((record) => getRecordDate(record)));
-  if (!bounds) return department.records;
+  if (!bounds) return [];
 
   return department.records
     .filter((record) => {
       const recordDate = toDateOrNull(getRecordDate(record));
-      if (!recordDate) return true;
+      if (!recordDate) return false;
       return isDateInsidePeriod(recordDate, bounds.startDate, bounds.endDate);
     })
     .sort((left, right) => {
@@ -3884,15 +3882,27 @@ function renderLineCharts() {
   qs("#periodBadge").textContent = getActivePeriodLabel();
 }
 
+function launchMatchesSearch(launch, query) {
+  let search = normalizeTextKey(query).trim();
+  const shift = search.match(/\bturno\s+([abcd])\b/);
+  if (shift) {
+    if (normalizeTextKey(launch.shift) !== `turno ${shift[1]}`) return false;
+    search = search.replace(shift[0], "");
+  }
+  const text = normalizeTextKey([launch.indicator, launch.date, formatDate(launch.date), launch.shift].join(" "));
+  return search.split(/\s+/).filter(Boolean).every((term) => text.includes(term));
+}
+
 function renderLaunches() {
-  const launches = getFilteredLaunches(currentDepartment());
+  const query = qs("#launchHistorySearch")?.value || "";
+  const launches = getFilteredLaunches(currentDepartment()).filter((launch) => launchMatchesSearch(launch, query));
   const listElement = qs("#activityList");
   qs("#launchCounter").textContent = String(launches.length);
 
   if (launches.length === 0) {
     listElement.innerHTML = `
       <article class="record-card">
-        <p>Sem lançamentos para o período selecionado.</p>
+        <p>${query.trim() ? "Nenhum lançamento encontrado para a pesquisa neste período." : "Sem lançamentos para o período selecionado."}</p>
       </article>
     `;
     return;
@@ -6389,6 +6399,7 @@ function renderTvIcon(icon) {
 }
 
 function getTvHealthTone(health) {
+  if (health === null || health === undefined) return "neutral";
   if (health >= 80) return "success";
   if (health >= 60) return "warn";
   return "danger";
@@ -6412,7 +6423,7 @@ function renderTvHealthGauge(summary) {
       <span class="tv-summary-icon health">${renderTvIcon("pulse")}</span>
       <div>
         <span>Saúde Operacional Geral</span>
-        <strong>${summary.health}%</strong>
+        <strong>${summary.health === null ? "—" : `${summary.health}%`}</strong>
       </div>
     </article>
   `;
@@ -6457,8 +6468,8 @@ function renderTvSectorCard(sector) {
           <h3>${escapeHtml(sector.name)}</h3>
         </div>
       </header>
-      <div class="tv-sector-health" aria-label="Saúde do setor ${sector.health}%">
-        <strong class="${getTvHealthTone(sector.health)}">${sector.health}%</strong>
+      <div class="tv-sector-health" aria-label="Saúde do setor">
+        <strong class="${getTvHealthTone(sector.health)}">${sector.health === null ? "—" : `${sector.health}%`}</strong>
       </div>
       <div class="tv-indicator-list">
         ${sector.indicators.map(renderTvIndicatorRow).join("")}
@@ -6608,22 +6619,27 @@ function getTopMissingItem(counter, fallbackLabel) {
 
 function getTvFillingAnalysis() {
   const { startDate, endDate } = getTvFillingBounds();
+  const today = toDateOrNull(getTodayInputDate());
+  const effectiveEnd = endDate > today ? today : endDate;
 
   const departmentsAnalysis = operationalDepartmentKeys.map((departmentKey) => {
     const department = departments[departmentKey];
-    const dateKeys = getTvDateKeysForDepartment(startDate, endDate, departmentKey);
-    const shiftOptions = getDepartmentShiftOptions(departmentKey);
-    const indicators = (department.indicators || []).filter((indicator) => indicator.goal !== "tracking");
-    const expectedTotal = dateKeys.length * shiftOptions.length * indicators.length;
+    const schedulePending = false;
+    const dateKeys = getTvDateKeysForDepartment(startDate, effectiveEnd, departmentKey);
+    const shiftOptions = commercialOnlyDepartmentKeys.has(departmentKey) ? ["Comercial"] : ["Turno A", "Turno B", "Turno C", "Turno D"];
+    const indicators = department.indicators || [];
+    let expectedTotal = 0;
     const filledKeys = new Set();
 
     (department.launches || []).forEach((launch) => {
       const launchDate = toDateOrNull(launch.date);
-      if (!launchDate || !isDateInsidePeriod(launchDate, startDate, endDate)) return;
+      if (!launchDate || launchDate < startDate || launchDate > effectiveEnd) return;
+      const indicator = indicators.find((item) => normalizeTextKey(item.name) === normalizeTextKey(launch.indicator));
+      const weekly = isWeeklyFillingIndicator(departmentKey, indicator);
       filledKeys.add(
         [
-          getTvDateKey(launchDate),
-          normalizeDepartmentShift(launch.shift, departmentKey),
+          weekly ? getFillingWeekKey(launchDate) : getTvDateKey(launchDate),
+          weekly ? "Setor" : normalizeDepartmentShift(launch.shift, departmentKey),
           normalizeTextKey(launch.indicator),
         ].join("|"),
       );
@@ -6632,28 +6648,40 @@ function getTvFillingAnalysis() {
     const missingByShift = new Map(shiftOptions.map((shift) => [shift, 0]));
     const missingByDate = new Map(dateKeys.map((dateKey) => [dateKey, 0]));
     let completedTotal = 0;
+    const checkedKeys = new Set();
+    const missing = [];
 
     dateKeys.forEach((dateKey) => {
-      shiftOptions.forEach((shift) => {
+      getFillingShiftsForDate(dateKey, departmentKey).forEach((shift) => {
         indicators.forEach((indicator) => {
-          const key = [dateKey, shift, normalizeTextKey(indicator.name)].join("|");
+          const weekly = isWeeklyFillingIndicator(departmentKey, indicator);
+          const periodKey = weekly ? getFillingWeekKey(toDateOrNull(dateKey)) : dateKey;
+          const expectedShift = weekly ? "Setor" : shift;
+          const key = [periodKey, expectedShift, normalizeTextKey(indicator.name)].join("|");
+          if (checkedKeys.has(key)) return;
+          checkedKeys.add(key);
+          expectedTotal += 1;
           if (filledKeys.has(key)) {
             completedTotal += 1;
             return;
           }
 
-          missingByShift.set(shift, (missingByShift.get(shift) || 0) + 1);
+          missingByShift.set(expectedShift, (missingByShift.get(expectedShift) || 0) + 1);
           missingByDate.set(dateKey, (missingByDate.get(dateKey) || 0) + 1);
+          missing.push({ indicator: indicator.name, date: dateKey, shift: expectedShift, frequency: weekly ? "Semanal" : "Diário", periodKey });
         });
       });
     });
 
     const missingTotal = Math.max(0, expectedTotal - completedTotal);
-    const coverage = expectedTotal ? Math.round((completedTotal / expectedTotal) * 100) : 100;
+    const coverage = expectedTotal ? Math.round((completedTotal / expectedTotal) * 100) : null;
     const topShift = getTopMissingItem(missingByShift, "Sem pendência");
     const topDate = getTopMissingItem(missingByDate, "Sem pendência");
 
     return {
+      departmentKey,
+      schedulePending,
+      missing,
       department: department.label,
       expectedTotal,
       completedTotal,
@@ -6668,7 +6696,7 @@ function getTvFillingAnalysis() {
   const expectedTotal = departmentsAnalysis.reduce((sum, item) => sum + item.expectedTotal, 0);
   const completedTotal = departmentsAnalysis.reduce((sum, item) => sum + item.completedTotal, 0);
   const missingTotal = departmentsAnalysis.reduce((sum, item) => sum + item.missingTotal, 0);
-  const coverage = expectedTotal ? Math.round((completedTotal / expectedTotal) * 100) : 100;
+  const coverage = expectedTotal ? Math.round((completedTotal / expectedTotal) * 100) : null;
 
   return {
     periodLabel: getActivePeriodLabel(),
@@ -6676,11 +6704,30 @@ function getTvFillingAnalysis() {
     completedTotal,
     missingTotal,
     coverage,
+    pendingSchedules: departmentsAnalysis.filter((item) => item.schedulePending).length,
     departments: departmentsAnalysis
-      .filter((item) => item.missingTotal > 0)
-      .sort((left, right) => right.missingTotal - left.missingTotal)
-      .slice(0, 4),
+      .sort((left, right) => right.missingTotal - left.missingTotal),
   };
+}
+
+function isWeeklyFillingIndicator(departmentKey, indicator) {
+  const name = normalizeTextKey(indicator?.name || "");
+  return (departmentKey === "estoque" && name.includes("slow mover")) ||
+    (departmentKey === "quimicas" && name.includes("kanban"));
+}
+
+function getFillingShiftsForDate(dateKey, departmentKey) {
+  if (commercialOnlyDepartmentKeys.has(departmentKey)) return ["Comercial"];
+  // The date belongs to the start of the shift; UTC arithmetic avoids DST drift.
+  const dayOffset = Math.round((Date.parse(`${dateKey}T00:00:00Z`) - Date.UTC(2026, 8, 4)) / 86400000);
+  const shifts = dayOffset % 2 === 0 ? ["Turno A", "Turno B"] : ["Turno C", "Turno D"];
+  return shifts.filter((shift, index) => Date.parse(`${dateKey}T${index === 0 ? "07" : "19"}:00:00-03:00`) <= Date.now());
+}
+
+function getFillingWeekKey(date) {
+  const monday = new Date(date);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  return getTvDateKey(monday);
 }
 
 function getTvSectorStatusFromTone(tone) {
@@ -6715,7 +6762,7 @@ function buildTvSectorData() {
     return {
       rank: index + 1,
       name: stats.label,
-      health: Number.isFinite(Number(stats.score)) ? Math.round(stats.score) : 0,
+      health: stats.score === null ? null : Math.round(stats.score),
       status: getTvSectorStatusFromTone(stats.tone),
       counts: stats.counts,
       indicators,
@@ -6750,7 +6797,7 @@ function getTvPriorityAlerts(rows) {
 }
 
 function buildTvExecutiveReadings(sectors, alerts, fillingAnalysis) {
-  const rankedSectors = [...sectors].sort((left, right) => right.health - left.health);
+  const rankedSectors = sectors.filter((sector) => sector.health !== null).sort((left, right) => right.health - left.health);
   const bestSector = rankedSectors[0];
   const maxCritical = Math.max(0, ...sectors.map((sector) => sector.counts?.danger || 0));
   const criticalSectors = sectors
@@ -6758,6 +6805,8 @@ function buildTvExecutiveReadings(sectors, alerts, fillingAnalysis) {
     .map((sector) => sector.name);
   const topAlert = alerts[0];
   const fillingFocus = fillingAnalysis.departments[0];
+  const missingDataSectors = sectors.filter((sector) => sector.counts.neutral > 0);
+  const missingIndicators = missingDataSectors.reduce((sum, sector) => sum + sector.counts.neutral, 0);
 
   return [
     {
@@ -6772,7 +6821,7 @@ function buildTvExecutiveReadings(sectors, alerts, fillingAnalysis) {
     {
       tone: maxCritical > 0 ? "danger" : "success",
       label: "Setores mais críticos",
-      title: criticalSectors.length ? criticalSectors.join(" e ") : "Sem setores críticos",
+      title: criticalSectors.length ? criticalSectors.join(" e ") : bestSector ? "Sem setores críticos" : "Sem dados",
       icon: "alert",
       description:
         maxCritical > 0
@@ -6782,11 +6831,11 @@ function buildTvExecutiveReadings(sectors, alerts, fillingAnalysis) {
     {
       tone: topAlert ? "warn" : "success",
       label: "Principal risco",
-      title: topAlert?.indicator || "Risco controlado",
+      title: topAlert?.indicator || (bestSector ? "Risco controlado" : "Sem dados"),
       icon: "health",
       description: topAlert
         ? `${topAlert.sector}: acumulado ${topAlert.accumulated} frente à meta ${topAlert.target}.`
-        : "Sem alertas em atenção ou críticos no período.",
+        : bestSector ? "Sem alertas em atenção ou críticos no período." : "Sem dados no período selecionado.",
     },
     {
       tone: fillingFocus ? "process" : "success",
@@ -6796,6 +6845,15 @@ function buildTvExecutiveReadings(sectors, alerts, fillingAnalysis) {
       description: fillingFocus
         ? `${fillingFocus.department}: ${fillingFocus.missingTotal} pendências em ${fillingAnalysis.periodLabel}.`
         : "Todos os registros previstos foram preenchidos.",
+    },
+    {
+      tone: missingIndicators ? "warn" : "success",
+      label: "Cobertura dos indicadores",
+      title: missingIndicators ? `${missingIndicators} indicadores sem dados em ${missingDataSectors.length} setores` : "Todos os indicadores com dados",
+      icon: "clipboard",
+      description: missingIndicators
+        ? missingDataSectors.map((sector) => `${sector.name}: ${sector.counts.neutral}`).join(" · ")
+        : "Todos os indicadores cadastrados possuem resultados no período selecionado.",
     },
   ];
 }
@@ -6815,11 +6873,11 @@ function buildTvDashboardData() {
     periodLabel: getActivePeriodLabel(),
     generatedAt: new Date(),
     summary: {
-      totalIndicators: monitoredRows.length,
+      totalIndicators: statusRows.length,
       onTarget,
       attention,
       critical,
-      health: monitoredRows.length ? Math.round((onTarget / monitoredRows.length) * 100) : 0,
+      health: statusRows.length ? Math.round((onTarget / statusRows.length) * 100) : null,
     },
     sectors,
     alerts,
@@ -6829,25 +6887,25 @@ function buildTvDashboardData() {
 }
 
 function renderTvFillingAnalysis(analysis) {
-  const tone = analysis.coverage >= 95 ? "success" : analysis.coverage >= 80 ? "warn" : "danger";
+  const tone = analysis.coverage === null ? "neutral" : analysis.coverage >= 95 ? "success" : analysis.coverage >= 80 ? "warn" : "danger";
   const rows = analysis.departments.length
     ? analysis.departments
         .map(
           (item) => `
-            <article class="tv-filling-row">
+            <button type="button" class="tv-filling-row" data-filling-department="${escapeHtml(item.departmentKey)}">
               <div>
                 <strong>${escapeHtml(item.department)}</strong>
-                <span>${item.coverage}% preenchido · ${item.missingTotal} pendências</span>
+                <span>${item.coverage === null ? "Sem registros previstos no período" : `${item.coverage}% preenchido · ${item.missingTotal} pendências`}</span>
               </div>
               <div>
                 <small>Turno mais pendente</small>
-                <strong>${escapeHtml(item.topShift.label)}</strong>
+                <strong>${item.schedulePending ? "A, B, C e D" : escapeHtml(item.topShift.label)}</strong>
               </div>
               <div>
                 <small>Dia crítico</small>
-                <strong>${escapeHtml(formatDateLabel(item.topDate.label))}</strong>
+                <strong>${item.schedulePending || !item.missingTotal ? "—" : escapeHtml(formatDateLabel(item.topDate.label))}</strong>
               </div>
-            </article>
+            </button>
           `,
         )
         .join("")
@@ -6868,15 +6926,16 @@ function renderTvFillingAnalysis(analysis) {
       </div>
       <div class="tv-filling-score ${tone}">
         <div>
-          <span>${escapeHtml(analysis.periodLabel)}</span>
-          <strong>${analysis.coverage}%</strong>
+          <span class="filling-period-line">${escapeHtml(analysis.periodLabel)} <b class="filling-pending-text">· ${formatNumber(analysis.missingTotal)} pendências</b></span>
+          <strong>${analysis.coverage === null ? "—" : `${analysis.coverage}%`}</strong>
           <small>${formatNumber(analysis.completedTotal)} de ${formatNumber(analysis.expectedTotal)} registros previstos</small>
         </div>
-        <em>${formatNumber(analysis.missingTotal)} pendências</em>
+        <button type="button" class="ghost-button" id="exportFillingPdf">Gerar PDF de pendências</button>
       </div>
       <div class="tv-filling-list">
         ${rows}
       </div>
+      ${analysis.pendingSchedules ? '<p class="filling-note">Apuração parcial: os setores 12x36 aguardam a data de referência dos turnos e a regra semanal por turno ou setor.</p>' : ""}
     </section>
   `;
 }
@@ -6950,6 +7009,71 @@ function renderTv() {
   `;
 
   updateTvClock();
+  qs("#exportFillingPdf")?.addEventListener("click", exportFillingPdf);
+  document.querySelectorAll("[data-filling-department]").forEach((button) => {
+    button.addEventListener("click", () => openFillingDetails(button.dataset.fillingDepartment));
+  });
+}
+
+function exportFillingPdf() {
+  const analysis = getTvFillingAnalysis();
+  const rows = analysis.departments.flatMap((department) => department.missing.map((row) => [
+    department.department, row.indicator,
+    row.frequency === "Semanal" ? `Semana de ${formatDateLabel(row.periodKey)}` : formatDateLabel(row.date),
+    row.shift, row.frequency,
+  ]));
+  const popup = window.open("", "_blank", "width=1200,height=900");
+  if (!popup) {
+    showToast("Libere pop-ups para gerar o PDF de pendências.", "warn");
+    return;
+  }
+  popup.document.open();
+  popup.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Pendências de preenchimento</title><style>
+    body{font-family:Arial,sans-serif;color:#111;margin:24px}h1{font-size:22px}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #bbb;padding:7px;text-align:left}thead{display:table-header-group}tr{break-inside:avoid}@page{size:A4 landscape;margin:12mm}
+    </style></head><body><h1>Pendências de preenchimento</h1><p>${escapeHtml(analysis.periodLabel)} · ${rows.length} pendências · Gerado em ${escapeHtml(formatExportDateTime())}</p>
+    <p>Turnos noturnos vinculados à data de início. Indicadores semanais cobrados uma vez por setor, por semana, dentro do período selecionado.</p>
+    ${rows.length ? renderExportTable(["Departamento", "Indicador", "Dia / semana", "Turno", "Frequência"], rows) : "<p>Nenhuma pendência no período selecionado.</p>"}</body></html>`);
+  popup.document.close();
+  window.setTimeout(() => { popup.focus(); popup.print(); }, 250);
+}
+
+function openFillingDetails(departmentKey) {
+  const analysis = getTvFillingAnalysis();
+  const item = analysis.departments.find((department) => department.departmentKey === departmentKey);
+  if (!item) return;
+  qs("#fillingDetails")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.id = "fillingDetails";
+  dialog.className = "filling-dialog";
+  dialog.setAttribute("aria-labelledby", "fillingDetailsTitle");
+  const options = (values) => values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
+  dialog.innerHTML = `
+    <header><div><h2 id="fillingDetailsTitle">${escapeHtml(item.department)}</h2><p>${escapeHtml(analysis.periodLabel)}</p></div><button type="button" data-close aria-label="Fechar" title="Fechar">&times;</button></header>
+    ${item.schedulePending ? '<p>Falta definir uma data trabalhada por cada equipe A, B, C e D para alternar trabalho e folga na escala 12x36. A cobrança semanal do Kanban também depende da definição por turno ou por setor.</p>' : ""}
+    <div class="filling-filters">
+      <label>Indicador<select data-filter="indicator"><option value="">Todos</option>${options([...new Set(item.missing.map((row) => row.indicator))])}</select></label>
+      <label>Turno<select data-filter="shift"><option value="">Todos</option>${options([...new Set(item.missing.map((row) => row.shift))])}</select></label>
+      <label>Frequência<select data-filter="frequency"><option value="">Todas</option><option>Diário</option><option>Semanal</option></select></label>
+      <label>De<input type="date" data-filter="from"></label><label>Até<input type="date" data-filter="to"></label>
+    </div>
+    <p data-count aria-live="polite"></p>
+    <div class="filling-table"><table><thead><tr><th>Indicador</th><th>Dia / semana</th><th>Turno</th><th>Frequência</th></tr></thead><tbody></tbody></table></div>`;
+  const renderRows = () => {
+    const filters = Object.fromEntries([...dialog.querySelectorAll("[data-filter]")].map((input) => [input.dataset.filter, input.value]));
+    const rows = item.missing.filter((row) =>
+      (!filters.indicator || row.indicator === filters.indicator) &&
+      (!filters.shift || row.shift === filters.shift) &&
+      (!filters.frequency || row.frequency === filters.frequency) &&
+      (!filters.from || row.date >= filters.from) && (!filters.to || row.date <= filters.to));
+    dialog.querySelector("[data-count]").textContent = item.schedulePending ? "Apuração aguardando escala." : `${rows.length} pendências`;
+    dialog.querySelector("tbody").innerHTML = rows.length ? rows.map((row) => `<tr><td>${escapeHtml(row.indicator)}</td><td>${row.frequency === "Semanal" ? "Semana de " + escapeHtml(formatDateLabel(row.periodKey)) : escapeHtml(formatDateLabel(row.date))}</td><td>${escapeHtml(row.shift)}</td><td>${escapeHtml(row.frequency)}</td></tr>`).join("") : `<tr><td colspan="4">${item.schedulePending ? "Escala ainda não configurada." : "Nenhuma pendência para os filtros selecionados."}</td></tr>`;
+  };
+  dialog.querySelector("[data-close]").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.querySelectorAll("[data-filter]").forEach((input) => input.addEventListener("change", renderRows));
+  document.body.append(dialog);
+  renderRows();
+  dialog.showModal();
 }
 
 function formatExportDateTime(date = new Date()) {
@@ -7032,12 +7156,12 @@ function getManagementExportRows(data) {
 
   const fillingRows = data.fillingAnalysis.departments.map((item) => [
     item.department,
-    `${item.coverage}%`,
-    item.completedTotal,
-    item.expectedTotal,
-    item.missingTotal,
+    item.coverage === null ? "Sem previsão" : `${item.coverage}%`,
+    item.schedulePending ? "—" : item.completedTotal,
+    item.schedulePending ? "—" : item.expectedTotal,
+    item.schedulePending ? "—" : item.missingTotal,
     item.topShift.label,
-    formatDateLabel(item.topDate.label),
+    item.schedulePending || !item.missingTotal ? "—" : formatDateLabel(item.topDate.label),
   ]);
 
   const readingRows = data.executiveReadings.map((reading) => [
@@ -7056,7 +7180,7 @@ function buildManagementExportHtml(data) {
     ["Total na Meta", data.summary.onTarget],
     ["Total em Atenção", data.summary.attention],
     ["Total Críticos", data.summary.critical],
-    ["Saúde Operacional Geral", `${data.summary.health}%`],
+    ["Saúde Operacional Geral", data.summary.health === null ? "Sem dados" : `${data.summary.health}%`],
   ];
 
   return `<!doctype html>
@@ -7391,7 +7515,10 @@ function setupInteractions() {
   });
 
   qs("#exportPdfButton")?.addEventListener("click", exportManagementPdf);
-  qs("#exportExcelButton")?.addEventListener("click", exportManagementExcel);
+  qs("#launchHistorySearch")?.addEventListener("input", () => {
+    renderLaunches();
+    qs("#activityList").scrollTop = 0;
+  });
 
   const periodSelect = qs("#periodSelect");
   const onPeriodChange = (event) => {

@@ -74,7 +74,7 @@
           </button>
           <button class="nav-item management-only hidden" data-view="tv" type="button">
             <span class="nav-icon tv-icon" aria-hidden="true"></span>
-            TV Logística
+            Gestão a Vista
           </button>
         </nav>
 
@@ -130,7 +130,6 @@
             <button class="primary-button" id="refreshButton" type="button">Atualizar</button>
             <div class="export-actions management-only hidden" id="managementExportActions">
               <button class="ghost-button export-button" id="exportPdfButton" type="button">Gerar PDF</button>
-              <button class="ghost-button export-button" id="exportExcelButton" type="button">Gerar Excel</button>
             </div>
           </div>
         </header>
@@ -557,6 +556,7 @@
                   <p class="eyebrow">Histórico</p>
                   <h2>Últimos lançamentos</h2>
                 </div>
+                <input id="launchHistorySearch" class="launch-history-search" type="search" placeholder="Indicador, data ou turno" aria-label="Pesquisar últimos lançamentos" />
                 <span class="counter" id="launchCounter">0</span>
               </div>
               <div class="activity-list" id="activityList"></div>
