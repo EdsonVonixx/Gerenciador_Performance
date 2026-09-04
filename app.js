@@ -3893,6 +3893,17 @@ function launchMatchesSearch(launch, query) {
   return search.split(/\s+/).filter(Boolean).every((term) => text.includes(term));
 }
 
+function findDuplicateLaunch(launch, excludedLaunchId = null, department = currentDepartment()) {
+  const indicatorKey = normalizeTextKey(launch.indicator);
+  const shiftKey = normalizeTextKey(normalizeDepartmentShift(launch.shift));
+  return (department.launches || []).find((item) =>
+    item.id !== excludedLaunchId &&
+    normalizeTextKey(item.indicator) === indicatorKey &&
+    String(item.date || "") === String(launch.date || "") &&
+    normalizeTextKey(normalizeDepartmentShift(item.shift)) === shiftKey,
+  ) || null;
+}
+
 function renderLaunches() {
   const query = qs("#launchHistorySearch")?.value || "";
   const launches = getFilteredLaunches(currentDepartment()).filter((launch) => launchMatchesSearch(launch, query));
@@ -6930,7 +6941,7 @@ function renderTvFillingAnalysis(analysis) {
           <strong>${analysis.coverage === null ? "—" : `${analysis.coverage}%`}</strong>
           <small>${formatNumber(analysis.completedTotal)} de ${formatNumber(analysis.expectedTotal)} registros previstos</small>
         </div>
-        <button type="button" class="ghost-button" id="exportFillingPdf">Gerar PDF de pendências</button>
+        <button type="button" class="ghost-button pending-report-button" id="exportFillingReport">Gerar relatório de Pendências</button>
       </div>
       <div class="tv-filling-list">
         ${rows}
@@ -7009,32 +7020,63 @@ function renderTv() {
   `;
 
   updateTvClock();
-  qs("#exportFillingPdf")?.addEventListener("click", exportFillingPdf);
+  qs("#exportFillingReport")?.addEventListener("click", () => exportFillingReport(true));
   document.querySelectorAll("[data-filling-department]").forEach((button) => {
     button.addEventListener("click", () => openFillingDetails(button.dataset.fillingDepartment));
   });
 }
 
-function exportFillingPdf() {
-  const analysis = getTvFillingAnalysis();
-  const rows = analysis.departments.flatMap((department) => department.missing.map((row) => [
-    department.department, row.indicator,
-    row.frequency === "Semanal" ? `Semana de ${formatDateLabel(row.periodKey)}` : formatDateLabel(row.date),
-    row.shift, row.frequency,
-  ]));
-  const popup = window.open("", "_blank", "width=1200,height=900");
-  if (!popup) {
-    showToast("Libere pop-ups para gerar o PDF de pendências.", "warn");
-    return;
+function getPendingReportDepartments(analysis, allDepartments = false) {
+  if (!currentUser) return [];
+  if (isManagement() && allDepartments) return analysis.departments;
+  const key = isManagement() ? selectedDepartmentKey : currentUser.departmentKey;
+  return analysis.departments.filter((department) => department.departmentKey === key);
+}
+
+let pendingReportExportActive = false;
+
+async function exportFillingReport(allDepartments = false) {
+  if (!currentUser || pendingReportExportActive) return;
+  pendingReportExportActive = true;
+  try {
+    const analysis = getTvFillingAnalysis();
+    const reportDepartments = getPendingReportDepartments(analysis, allDepartments);
+    if (!reportDepartments.length) {
+      showToast("Nenhum setor disponível para o relatório.", "warn");
+      return;
+    }
+    const { createFillingWorkbook } = await import("./filling-report.js");
+    const workbook = createFillingWorkbook(analysis, reportDepartments);
+    const buffer = await workbook.xlsx.writeBuffer();
+    const scope = reportDepartments.length === 1 ? reportDepartments[0].departmentKey : "todos-setores";
+    downloadBlob(`pendencias-${scope}-${getExportFileStamp(new Date())}.xlsx`, buffer,
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    showToast("Relatório de pendências gerado.");
+  } catch (error) {
+    console.error("Falha ao gerar relatório de pendências", error);
+    showToast("Não foi possível gerar o relatório. Tente novamente.", "danger");
+  } finally {
+    pendingReportExportActive = false;
   }
-  popup.document.open();
-  popup.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Pendências de preenchimento</title><style>
-    body{font-family:Arial,sans-serif;color:#111;margin:24px}h1{font-size:22px}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #bbb;padding:7px;text-align:left}thead{display:table-header-group}tr{break-inside:avoid}@page{size:A4 landscape;margin:12mm}
-    </style></head><body><h1>Pendências de preenchimento</h1><p>${escapeHtml(analysis.periodLabel)} · ${rows.length} pendências · Gerado em ${escapeHtml(formatExportDateTime())}</p>
-    <p>Turnos noturnos vinculados à data de início. Indicadores semanais cobrados uma vez por setor, por semana, dentro do período selecionado.</p>
-    ${rows.length ? renderExportTable(["Departamento", "Indicador", "Dia / semana", "Turno", "Frequência"], rows) : "<p>Nenhuma pendência no período selecionado.</p>"}</body></html>`);
-  popup.document.close();
-  window.setTimeout(() => { popup.focus(); popup.print(); }, 250);
+}
+
+function confirmDepartmentPendingReport() {
+  if (!currentUser || qs("#pendingReportConfirmation")) return;
+  const dialog = document.createElement("dialog");
+  dialog.id = "pendingReportConfirmation";
+  dialog.className = "filling-dialog pending-report-confirmation";
+  dialog.setAttribute("aria-labelledby", "pendingReportQuestion");
+  dialog.innerHTML = `<h2 id="pendingReportQuestion">Deseja gerar relatório com as pendências de Preenchimento em Excel?</h2>
+    <div class="pending-report-actions"><button type="button" class="ghost-button" data-no autofocus>Não</button>
+    <button type="button" class="primary-button" data-yes>Sim</button></div>`;
+  dialog.querySelector("[data-no]").addEventListener("click", () => dialog.close());
+  dialog.querySelector("[data-yes]").addEventListener("click", () => {
+    dialog.close();
+    exportFillingReport(false);
+  });
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
 }
 
 function openFillingDetails(departmentKey) {
@@ -7515,6 +7557,7 @@ function setupInteractions() {
   });
 
   qs("#exportPdfButton")?.addEventListener("click", exportManagementPdf);
+  qs("#departmentPendingReportButton")?.addEventListener("click", confirmDepartmentPendingReport);
   qs("#launchHistorySearch")?.addEventListener("input", () => {
     renderLaunches();
     qs("#activityList").scrollTop = 0;
@@ -7621,6 +7664,13 @@ function setupInteractions() {
       comment: String(data.get("comment")),
       formulaData: formulaPayload,
     };
+    const duplicateLaunch = findDuplicateLaunch(launchRecord, editingLaunchId);
+    if (duplicateLaunch) {
+      const allowed = window.confirm(
+        `Já existe um lançamento de “${launchRecord.indicator}” em ${formatDate(launchRecord.date)}, no ${launchRecord.shift}. Deseja continuar e salvar o registro duplicado?`,
+      );
+      if (!allowed) return;
+    }
 
     try {
       await persistSupabaseLaunch(launchRecord, selectedDepartmentKey);

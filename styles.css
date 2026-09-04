@@ -4659,7 +4659,13 @@ button.tv-filling-row:focus-visible {
 
 .tv-filling-score { padding: 12px 16px; gap: 12px; flex-wrap: wrap; }
 .tv-filling-score strong { font-size: 30px; line-height: 1.1; margin: 4px 0; }
-.tv-filling-score #exportFillingPdf { margin-left: auto; font-size: 13px; padding: 8px 12px; min-height: 36px; }
+.tv-filling-score #exportFillingReport { margin-left: auto; font-size: 13px; padding: 8px 12px; min-height: 36px; }
+.pending-report-confirmation { width: min(520px, calc(100vw - 32px)); }
+.pending-report-confirmation h2 { font-size: 20px; line-height: 1.4; }
+.pending-report-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+.pending-report-button { color: #fff; background: #d97706; border-color: #f59e0b; box-shadow: 0 8px 20px rgb(217 119 6 / 20%); }
+.pending-report-button:hover,
+.pending-report-button:focus-visible { color: #fff; background: #ea8a08; border-color: #fbbf24; }
 
 .filling-dialog {
   width: min(1100px, calc(100vw - 32px));
