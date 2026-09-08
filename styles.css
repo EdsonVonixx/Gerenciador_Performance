@@ -545,6 +545,11 @@ label,
   min-width: 92px;
 }
 
+.quarter-filter,
+.quarter-filter select {
+  min-width: 142px;
+}
+
 .year-filter,
 .year-filter select {
   min-width: 96px;

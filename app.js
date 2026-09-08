@@ -390,6 +390,7 @@ let selectedDepartmentKey = "almoxarifado";
 let currentView = "dashboard";
 let currentPeriod = "semana";
 let selectedMonthFilter = "";
+let selectedQuarterFilter = "";
 let editingLaunchId = null;
 let editingRecordId = null;
 let launchIdCounter = 1;
@@ -844,6 +845,25 @@ async function supabaseRestRequest(table, options = {}) {
   return payload;
 }
 
+async function loadAllSupabaseRows(table, query = "?select=*") {
+  const pageSize = 1000;
+  const rows = [];
+  let offset = 0;
+
+  while (true) {
+    const separator = query.includes("?") ? "&" : "?";
+    const page = await supabaseRestRequest(table, {
+      query: `${query}${separator}limit=${pageSize}&offset=${offset}`,
+    });
+    const pageRows = Array.isArray(page) ? page : [];
+    rows.push(...pageRows);
+    if (pageRows.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  return rows;
+}
+
 function getIndicatorByName(departmentKey, indicatorName) {
   const department = departments[departmentKey];
   if (!department || !indicatorName) return null;
@@ -1025,13 +1045,13 @@ async function loadSupabaseState() {
   if (!remotePersistenceActive()) return false;
 
   const [launchRows, actionRows, fiveSRows] = await Promise.all([
-    supabaseRestRequest(
+    loadAllSupabaseRows(
       "vpc_launches",
-      { query: "?select=*&order=record_date.desc,created_at.desc" },
+      "?select=*&order=record_date.desc,created_at.desc",
     ),
-    supabaseRestRequest(
+    loadAllSupabaseRows(
       "vpc_action_records",
-      { query: "?select=*&order=record_date.desc,created_at.desc" },
+      "?select=*&order=record_date.desc,created_at.desc",
     ),
     supabaseRestRequest(
       "vpc_five_s_audits",
@@ -1247,6 +1267,31 @@ function getMonthBounds(monthValue) {
   };
 }
 
+function isValidQuarterFilter(value) {
+  return /^\d{4}-Q[1-4]$/.test(value || "");
+}
+
+function getQuarterFilterValueFromDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-Q${Math.floor(date.getMonth() / 3) + 1}`;
+}
+
+function getQuarterBounds(quarterValue) {
+  if (!isValidQuarterFilter(quarterValue)) return null;
+  const [yearValue, quarterValuePart] = quarterValue.split("-Q").map(Number);
+  const startMonth = (quarterValuePart - 1) * 3;
+  return {
+    startDate: new Date(yearValue, startMonth, 1),
+    endDate: new Date(yearValue, startMonth + 3, 0),
+  };
+}
+
+function formatQuarterFilterLabel(quarterValue) {
+  if (!isValidQuarterFilter(quarterValue)) return "Trimestre";
+  const [yearValue, quarterValuePart] = quarterValue.split("-Q");
+  return `${quarterValuePart}º Trimestre de ${yearValue}`;
+}
+
 function formatMonthFilterLabel(monthValue) {
   if (!isValidMonthFilter(monthValue)) return "Mês";
   const [year, month] = monthValue.split("-").map(Number);
@@ -1292,7 +1337,9 @@ function getAvailableYearFilterValues(values = getPeriodContextDateValues()) {
     ),
   ).sort((left, right) => Number(right) - Number(left));
 
-  const selectedYear = isValidMonthFilter(selectedMonthFilter) ? selectedMonthFilter.slice(0, 4) : "";
+  const selectedYear = currentPeriod === "trimestre" && isValidQuarterFilter(selectedQuarterFilter)
+    ? selectedQuarterFilter.slice(0, 4)
+    : isValidMonthFilter(selectedMonthFilter) ? selectedMonthFilter.slice(0, 4) : "";
   if (selectedYear && !years.includes(selectedYear)) {
     years.unshift(selectedYear);
   }
@@ -1309,6 +1356,13 @@ function ensureSelectedMonthFilter(values = getPeriodContextDateValues()) {
     selectedMonthFilter = getDefaultMonthFilterValue(values);
   }
   return selectedMonthFilter;
+}
+
+function ensureSelectedQuarterFilter(values = getPeriodContextDateValues()) {
+  if (!isValidQuarterFilter(selectedQuarterFilter)) {
+    selectedQuarterFilter = getQuarterFilterValueFromDate(maxDateFromValues(values) || new Date());
+  }
+  return selectedQuarterFilter;
 }
 
 function syncYearFilterOptions(yearFilter, values = getPeriodContextDateValues()) {
@@ -1334,31 +1388,55 @@ function setSelectedMonthFilterFromControls() {
   return true;
 }
 
+function setSelectedQuarterFilterFromControls() {
+  const quarterValue = qs("#quarterFilter")?.value;
+  const yearValue = qs("#yearFilter")?.value || selectedQuarterFilter.slice(0, 4);
+  if (!/^[1-4]$/.test(quarterValue || "") || !/^\d{4}$/.test(yearValue)) return false;
+  selectedQuarterFilter = `${yearValue}-Q${quarterValue}`;
+  return true;
+}
+
 function syncMonthFilterControl() {
   const monthFilterWrap = qs("#monthFilterWrap");
+  const quarterFilterWrap = qs("#quarterFilterWrap");
   const yearFilterWrap = qs("#yearFilterWrap");
   const monthFilter = qs("#monthFilter");
+  const quarterFilter = qs("#quarterFilter");
   const yearFilter = qs("#yearFilter");
   const showMonthFilter = currentPeriod === "mes";
+  const showQuarterFilter = currentPeriod === "trimestre";
 
   if (monthFilterWrap) {
     monthFilterWrap.classList.toggle("hidden", !showMonthFilter);
   }
+  if (quarterFilterWrap) {
+    quarterFilterWrap.classList.toggle("hidden", !showQuarterFilter);
+  }
   if (yearFilterWrap) {
-    yearFilterWrap.classList.toggle("hidden", !showMonthFilter);
+    yearFilterWrap.classList.toggle("hidden", !showMonthFilter && !showQuarterFilter);
   }
 
   if (yearFilter) {
-    yearFilter.disabled = !showMonthFilter;
+    yearFilter.disabled = !showMonthFilter && !showQuarterFilter;
   }
   if (monthFilter) {
     monthFilter.disabled = !showMonthFilter;
+  }
+  if (quarterFilter) {
+    quarterFilter.disabled = !showQuarterFilter;
   }
   if (showMonthFilter) {
     const monthValue = ensureSelectedMonthFilter();
     const [year, month] = monthValue.split("-");
     syncYearFilterOptions(yearFilter);
     if (monthFilter) monthFilter.value = month;
+    if (yearFilter) yearFilter.value = year;
+  }
+  if (showQuarterFilter) {
+    const quarterValue = ensureSelectedQuarterFilter();
+    const [year, quarter] = quarterValue.split("-Q");
+    syncYearFilterOptions(yearFilter);
+    if (quarterFilter) quarterFilter.value = quarter;
     if (yearFilter) yearFilter.value = year;
   }
 }
@@ -1373,6 +1451,10 @@ function getActivePeriodLabel() {
     return formatMonthFilterLabel(ensureSelectedMonthFilter());
   }
 
+  if (currentPeriod === "trimestre") {
+    return formatQuarterFilterLabel(ensureSelectedQuarterFilter());
+  }
+
   const periodLabel = getSelectedOptionLabel("#periodSelect", "Período");
   const bounds = getDateFilterBounds();
   return `${periodLabel} · ${formatDateLabel(getTvDateKey(bounds.startDate))} a ${formatDateLabel(getTvDateKey(bounds.endDate))}`;
@@ -1381,6 +1463,10 @@ function getActivePeriodLabel() {
 function getDateFilterBounds(values = []) {
   if (currentPeriod === "mes") {
     return getMonthBounds(ensureSelectedMonthFilter());
+  }
+
+  if (currentPeriod === "trimestre") {
+    return getQuarterBounds(ensureSelectedQuarterFilter());
   }
 
   const referenceDate = toDateOrNull(getTodayInputDate());
@@ -1448,7 +1534,18 @@ function getIndicatorAverageValue(indicator, department = currentDepartment()) {
   return total / filteredHistory.length;
 }
 
+function isSummedIndicator(indicator) {
+  const key = normalizeTextKey(indicator?.name);
+  return key.includes("erros") && key.includes("expedicao");
+}
+
 function getIndicatorAccumulatedValue(indicator, department = currentDepartment()) {
+  if (isSummedIndicator(indicator)) {
+    const filteredHistory = getFilteredHistory(indicator, department);
+    return filteredHistory.length
+      ? filteredHistory.reduce((total, item) => total + Number(item.value), 0)
+      : null;
+  }
   return getIndicatorAverageValue(indicator, department);
 }
 
@@ -1456,7 +1553,7 @@ function getStatus(indicator, department = currentDepartment(), valueOverride = 
   const currentValue =
     valueOverride !== undefined
       ? valueOverride
-      : getIndicatorAverageValue(indicator, department);
+      : getIndicatorAccumulatedValue(indicator, department);
 
   if (currentValue === null || currentValue === undefined || !Number.isFinite(Number(currentValue))) {
     return "neutral";
@@ -1532,7 +1629,7 @@ function formatIntegerDisplay(value) {
 
 function formatMetric(indicator, valueOverride = undefined) {
   const currentValue =
-    valueOverride !== undefined ? valueOverride : getIndicatorAverageValue(indicator);
+    valueOverride !== undefined ? valueOverride : getIndicatorAccumulatedValue(indicator);
   if (currentValue === null || currentValue === undefined || !Number.isFinite(Number(currentValue))) {
     return "Sem dados";
   }
@@ -2216,8 +2313,8 @@ function restorePrototypeState() {
 function getFilteredLaunches(department = currentDepartment()) {
   if (!Array.isArray(department.launches) || department.launches.length === 0) return [];
 
-  const validIndicators = new Set((department.indicators || []).map((indicator) => normalizeTextKey(indicator.name)));
-  const validLaunches = department.launches.filter((launch) => validIndicators.has(normalizeTextKey(launch.indicator)));
+  const departmentKey = operationalDepartmentKeys.find((key) => departments[key] === department) || selectedDepartmentKey;
+  const validLaunches = department.launches.filter((launch) => getIndicatorByName(departmentKey, launch.indicator));
   const bounds = getDateFilterBounds(validLaunches.map((launch) => launch.date));
   if (!bounds) return [];
 
@@ -6628,6 +6725,21 @@ function getTopMissingItem(counter, fallbackLabel) {
   return { label: topLabel, value: topValue };
 }
 
+function getFillingIndicatorIdentity(departmentKey, indicatorName) {
+  const directIndicator = getIndicatorByName(departmentKey, indicatorName);
+  if (directIndicator) return normalizeTextKey(directIndicator.name);
+
+  const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, indicatorName);
+  if (formulaType) {
+    const formulaIndicator = (departments[departmentKey]?.indicators || []).find(
+      (indicator) => getLaunchFormulaTypeForDepartment(departmentKey, indicator.name) === formulaType,
+    );
+    if (formulaIndicator) return normalizeTextKey(formulaIndicator.name);
+  }
+
+  return normalizeTextKey(indicatorName);
+}
+
 function getTvFillingAnalysis() {
   const { startDate, endDate } = getTvFillingBounds();
   const today = toDateOrNull(getTodayInputDate());
@@ -6645,17 +6757,17 @@ function getTvFillingAnalysis() {
     (department.launches || []).forEach((launch) => {
       const launchDate = toDateOrNull(launch.date);
       if (!launchDate || launchDate < startDate || launchDate > effectiveEnd) return;
-      const indicator = indicators.find((item) => normalizeTextKey(item.name) === normalizeTextKey(launch.indicator));
+      const indicatorIdentity = getFillingIndicatorIdentity(departmentKey, launch.indicator);
+      const indicator = indicators.find((item) => getFillingIndicatorIdentity(departmentKey, item.name) === indicatorIdentity);
       const weekly = isWeeklyFillingIndicator(departmentKey, indicator);
       filledKeys.add(
         [
           weekly ? getFillingWeekKey(launchDate) : getTvDateKey(launchDate),
           weekly ? "Setor" : normalizeDepartmentShift(launch.shift, departmentKey),
-          normalizeTextKey(launch.indicator),
+          indicatorIdentity,
         ].join("|"),
       );
     });
-
     const missingByShift = new Map(shiftOptions.map((shift) => [shift, 0]));
     const missingByDate = new Map(dateKeys.map((dateKey) => [dateKey, 0]));
     let completedTotal = 0;
@@ -6668,7 +6780,7 @@ function getTvFillingAnalysis() {
           const weekly = isWeeklyFillingIndicator(departmentKey, indicator);
           const periodKey = weekly ? getFillingWeekKey(toDateOrNull(dateKey)) : dateKey;
           const expectedShift = weekly ? "Setor" : shift;
-          const key = [periodKey, expectedShift, normalizeTextKey(indicator.name)].join("|");
+          const key = [periodKey, expectedShift, getFillingIndicatorIdentity(departmentKey, indicator.name)].join("|");
           if (checkedKeys.has(key)) return;
           checkedKeys.add(key);
           expectedTotal += 1;
@@ -7039,6 +7151,10 @@ async function exportFillingReport(allDepartments = false) {
   if (!currentUser || pendingReportExportActive) return;
   pendingReportExportActive = true;
   try {
+    if (remotePersistenceActive()) {
+      const refreshed = await refreshSupabaseStateFromRemote({ reason: "pending-report", showToast: true });
+      if (!refreshed) return;
+    }
     const analysis = getTvFillingAnalysis();
     const reportDepartments = getPendingReportDepartments(analysis, allDepartments);
     if (!reportDepartments.length) {
@@ -7079,7 +7195,11 @@ function confirmDepartmentPendingReport() {
   dialog.showModal();
 }
 
-function openFillingDetails(departmentKey) {
+async function openFillingDetails(departmentKey) {
+  if (remotePersistenceActive()) {
+    const refreshed = await refreshSupabaseStateFromRemote({ reason: "pending-details", showToast: true });
+    if (!refreshed) return;
+  }
   const analysis = getTvFillingAnalysis();
   const item = analysis.departments.find((department) => department.departmentKey === departmentKey);
   if (!item) return;
@@ -7164,6 +7284,124 @@ function renderExportTable(headers, rows) {
   `;
 }
 
+function getManagementLaunchReportRows() {
+  const bounds = getDateFilterBounds();
+  if (!bounds) return [];
+  const rows = [];
+
+  operationalDepartmentKeys.forEach((departmentKey) => {
+    const department = departments[departmentKey];
+    const groupedRows = new Map();
+
+    (department.launches || []).forEach((launch) => {
+      const launchDate = toDateOrNull(launch.date);
+      const indicator = getIndicatorByName(departmentKey, launch.indicator);
+      if (!launchDate || !indicator || !isDateInsidePeriod(launchDate, bounds.startDate, bounds.endDate)) return;
+      const monthKey = getMonthFilterValueFromDate(launchDate);
+      const groupKey = `${normalizeTextKey(indicator.name)}|${monthKey}`;
+      if (!groupedRows.has(groupKey)) groupedRows.set(groupKey, { indicator, monthKey, launches: [] });
+      groupedRows.get(groupKey).launches.push(launch);
+    });
+
+    groupedRows.forEach(({ indicator, monthKey, launches }) => {
+      launches
+        .sort((left, right) => String(left.date).localeCompare(String(right.date)) || String(left.shift).localeCompare(String(right.shift), "pt-BR"))
+        .forEach((launch) => {
+          const numericValue = getLaunchNumericValue(launch, indicator);
+          rows.push({
+            type: "detail",
+            department: department.label,
+            indicator: indicator.name,
+            date: formatDate(launch.date),
+            shift: normalizeDepartmentShift(launch.shift, departmentKey),
+            result: Number.isFinite(numericValue) ? formatMetric(indicator, numericValue) : String(launch.value || "Sem dados"),
+          });
+        });
+
+      const values = launches
+        .map((launch) => getLaunchNumericValue(launch, indicator))
+        .filter((value) => Number.isFinite(value));
+      const monthResult = values.length
+        ? isSummedIndicator(indicator)
+          ? values.reduce((total, value) => total + value, 0)
+          : values.reduce((total, value) => total + value, 0) / values.length
+        : null;
+      rows.push({
+        type: "summary",
+        department: department.label,
+        indicator: indicator.name,
+        date: formatMonthFilterLabel(monthKey),
+        shift: "Fechamento mensal",
+        result: formatMetric(indicator, monthResult),
+        target: formatMetric(indicator, indicator.target),
+        status: getStatus(indicator, department, monthResult),
+      });
+    });
+  });
+
+  return rows;
+}
+
+function renderManagementLaunchTable(rows) {
+  if (!rows.length) {
+    return renderExportTable(["Setor", "Indicador", "Data", "Turno", "Resultado"], []);
+  }
+  return `<table class="launch-report-table">
+    <thead><tr><th>Setor</th><th>Indicador</th><th>Data</th><th>Turno</th><th>Resultado</th></tr></thead>
+    <tbody>${rows.map((row) => `<tr class="${row.type === "summary" ? "monthly-result" : ""}">
+      <td>${escapeHtml(row.department)}</td><td>${escapeHtml(row.indicator)}</td><td>${escapeHtml(row.date)}</td>
+      <td>${escapeHtml(row.shift)}</td><td><strong>${escapeHtml(row.result)}</strong></td>
+    </tr>`).join("")}</tbody>
+  </table>`;
+}
+
+function renderManagementExecutiveSummary(rows) {
+  return `<div class="executive-summary-list">${rows.map(([label, title, description], index) => `
+    <article class="executive-summary-card tone-${(index % 4) + 1}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(title)}</strong>
+      <small>${escapeHtml(description)}</small>
+    </article>
+  `).join("")}</div>`;
+}
+
+function renderManagementMonthlyKanban(rows) {
+  const groupedRows = new Map();
+  rows.filter((row) => row.type === "summary").forEach((row) => {
+    if (!groupedRows.has(row.department)) groupedRows.set(row.department, []);
+    groupedRows.get(row.department).push(row);
+  });
+
+  if (!groupedRows.size) return '<p class="empty-state">Sem resultados mensais para o período selecionado.</p>';
+
+  const orderedGroups = operationalDepartmentKeys
+    .map((departmentKey) => {
+      const department = departments[departmentKey];
+      const indicatorOrder = new Map(department.indicators.map((indicator, index) => [normalizeTextKey(indicator.name), index]));
+      const departmentRows = groupedRows.get(department.label) || [];
+      departmentRows.sort((left, right) => {
+        const orderDifference = (indicatorOrder.get(normalizeTextKey(left.indicator)) ?? Number.MAX_SAFE_INTEGER)
+          - (indicatorOrder.get(normalizeTextKey(right.indicator)) ?? Number.MAX_SAFE_INTEGER);
+        return orderDifference || String(left.date).localeCompare(String(right.date), "pt-BR");
+      });
+      return [department.label, departmentRows];
+    })
+    .filter(([, departmentRows]) => departmentRows.length);
+
+  return `<div class="monthly-kanban">${orderedGroups.map(([department, departmentRows], index) => `
+    <section class="kanban-sector sector-${(index % 5) + 1}">
+      <h3>${escapeHtml(department)}</h3>
+      <div class="kanban-indicators">${departmentRows.map((row) => `
+        <article class="kanban-indicator status-${escapeHtml(row.status || "tracking")}">
+          <span>${escapeHtml(row.indicator)}</span>
+          <strong>${escapeHtml(row.result)}</strong>
+          <small>${escapeHtml(row.date)} | Meta ${escapeHtml(row.target)}</small>
+        </article>
+      `).join("")}</div>
+    </section>
+  `).join("")}</div>`;
+}
+
 function getManagementExportRows(data) {
   const indicatorRows = data.sectors.flatMap((sector) => {
     const rows = sector.indicators.map((indicator) => [
@@ -7217,6 +7455,7 @@ function getManagementExportRows(data) {
 
 function buildManagementExportHtml(data) {
   const { indicatorRows, alertRows, fillingRows, readingRows } = getManagementExportRows(data);
+  const launchRows = getManagementLaunchReportRows();
   const summaryRows = [
     ["Total de Indicadores", data.summary.totalIndicators],
     ["Total na Meta", data.summary.onTarget],
@@ -7232,14 +7471,48 @@ function buildManagementExportHtml(data) {
         <title>Painel de Gestão - ${escapeHtml(data.periodLabel)}</title>
         <style>
           body {
-            margin: 28px;
+            margin: 24px;
             color: #101820;
             background: #ffffff;
             font-family: Arial, sans-serif;
           }
-          h1 { margin: 0 0 6px; font-size: 28px; }
-          h2 { margin: 24px 0 10px; font-size: 17px; }
+          .report-header { padding: 22px 24px; color: #fff; background: #0b2341; border-bottom: 6px solid #16b8a6; }
+          .report-header h1 { margin: 0 0 6px; font-size: 30px; }
+          .report-header p { margin: 0; color: #dbeafe; }
+          h2 { margin: 24px 0 10px; padding-left: 10px; color: #0b2341; border-left: 5px solid #16b8a6; font-size: 18px; }
           p { margin: 0 0 18px; color: #4d5b6a; }
+          .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 18px 0 8px; }
+          .summary-card { padding: 12px; color: #fff; background: #17456f; border-radius: 4px; }
+          .summary-card:nth-child(2) { background: #087f68; }
+          .summary-card:nth-child(3) { background: #b77900; }
+          .summary-card:nth-child(4), .summary-card:nth-child(5) { background: #b73546; }
+          .summary-card span { display: block; font-size: 9px; text-transform: uppercase; }
+          .summary-card strong { display: block; margin-top: 4px; font-size: 22px; }
+          .executive-summary-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+          .executive-summary-card { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid #cfd8e3; border-left: 6px solid #17456f; background: #f8fafc; }
+          .executive-summary-card.tone-1 { border-left-color: #0c9f82; }
+          .executive-summary-card.tone-2 { border-left-color: #e14d5a; }
+          .executive-summary-card.tone-3 { border-left-color: #e29a12; }
+          .executive-summary-card.tone-4 { border-left-color: #7357d8; }
+          .executive-summary-card span { color: #526275; font-size: 9px; text-transform: uppercase; }
+          .executive-summary-card strong { color: #0b2341; font-size: 13px; }
+          .executive-summary-card small { color: #526275; font-size: 9px; }
+          .monthly-kanban { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; align-items: start; }
+          .kanban-sector { overflow: hidden; border: 1px solid #b8c8da; border-top: 5px solid #1d75bd; background: #eef4fa; }
+          .kanban-sector.sector-2 { border-top-color: #0c9f82; }
+          .kanban-sector.sector-3 { border-top-color: #e29a12; }
+          .kanban-sector.sector-4 { border-top-color: #7357d8; }
+          .kanban-sector.sector-5 { border-top-color: #e14d5a; }
+          .kanban-sector h3 { min-height: 30px; margin: 0; padding: 8px; color: #fff; background: #0f2742; font-size: 11px; }
+          .kanban-indicators { display: grid; gap: 5px; padding: 6px; }
+          .kanban-indicator { display: grid; gap: 2px; padding: 6px; border-left: 4px solid #60758d; background: #fff; }
+          .kanban-indicator.status-success { border-left-color: #0c9f82; }
+          .kanban-indicator.status-warn { border-left-color: #e29a12; }
+          .kanban-indicator.status-danger { border-left-color: #e14d5a; }
+          .kanban-indicator span { min-height: 22px; color: #26384b; font-size: 8px; font-weight: 700; }
+          .kanban-indicator strong { color: #0b2341; font-size: 13px; }
+          .kanban-indicator small { color: #60758d; font-size: 7px; }
+          .empty-state { padding: 14px; border: 1px solid #d8e0e9; background: #f8fafc; }
           table {
             width: 100%;
             border-collapse: collapse;
@@ -7258,21 +7531,30 @@ function buildManagementExportHtml(data) {
             vertical-align: top;
           }
           tr:nth-child(even) td { background: #f5f7fb; }
+          .launch-report-table .monthly-result td { color: #083b35; background: #d9f3ed !important; border-top: 2px solid #16a085; font-weight: 700; }
           @media print {
+            @page { size: landscape; margin: 10mm; }
             body { margin: 14mm; }
+            .report-header { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+            .summary-card, .executive-summary-card, .kanban-sector, .kanban-sector h3, .kanban-indicator, th, .launch-report-table .monthly-result td { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
             h2 { break-after: avoid; }
             table { break-inside: auto; }
             tr { break-inside: avoid; }
+            .executive-summary-card, .kanban-sector, .kanban-indicator { break-inside: avoid; }
           }
         </style>
       </head>
       <body>
-        <h1>Panorama Operacional</h1>
-        <p>Período: ${escapeHtml(data.periodLabel)} | Gerado em ${escapeHtml(formatExportDateTime(data.generatedAt))}</p>
-        <h2>Resumo geral</h2>
-        ${renderExportTable(["Indicador", "Valor"], summaryRows)}
+        <header class="report-header"><h1>Panorama Operacional</h1>
+          <p>Relatório gerencial | Período: ${escapeHtml(data.periodLabel)} | Gerado em ${escapeHtml(formatExportDateTime(data.generatedAt))}</p>
+        </header>
+        <div class="summary-grid">${summaryRows.map(([label, value]) => `<div class="summary-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}</div>
         <h2>Resumo gerencial</h2>
-        ${renderExportTable(["Análise", "Título", "Descrição"], readingRows)}
+        ${renderManagementExecutiveSummary(readingRows)}
+        <h2>Resultados mensais por setor</h2>
+        ${renderManagementMonthlyKanban(launchRows)}
+        <h2>Lançamentos e resultados mensais</h2>
+        ${renderManagementLaunchTable(launchRows)}
         <h2>Principais indicadores por setor</h2>
         ${renderExportTable(["Ordem", "Setor", "Indicador", "Acumulado", "Meta", "Status"], indicatorRows)}
         <h2>Alertas prioritários</h2>
@@ -7352,6 +7634,9 @@ function applyPeriodFilter(nextPeriod, options = {}) {
 
   if (currentPeriod === "mes") {
     ensureSelectedMonthFilter();
+  }
+  if (currentPeriod === "trimestre") {
+    ensureSelectedQuarterFilter();
   }
 
   const periodSelect = qs("#periodSelect");
@@ -7466,6 +7751,7 @@ function setupLogin() {
     selectedDepartmentKey = profile.departmentKey;
     currentPeriod = "semana";
     selectedMonthFilter = "";
+    selectedQuarterFilter = "";
     qs("#loginError").textContent = "";
     qs("#loginScreen").classList.add("hidden");
     qs("#appShell").classList.remove("hidden");
@@ -7535,6 +7821,7 @@ function setupInteractions() {
     selectedDepartmentKey = "almoxarifado";
     currentPeriod = "semana";
     selectedMonthFilter = "";
+    selectedQuarterFilter = "";
     resetLaunchFormState();
     resetColumnFilters();
     qs("#loginForm").reset();
@@ -7572,6 +7859,7 @@ function setupInteractions() {
   periodSelect.addEventListener("input", onPeriodChange);
 
   const monthFilter = qs("#monthFilter");
+  const quarterFilter = qs("#quarterFilter");
   const yearFilter = qs("#yearFilter");
   const onMonthFilterChange = () => {
     if (!setSelectedMonthFilterFromControls()) return;
@@ -7583,7 +7871,20 @@ function setupInteractions() {
     showToast(`Mês alterado para ${formatMonthFilterLabel(selectedMonthFilter)}.`);
   };
   monthFilter?.addEventListener("change", onMonthFilterChange);
-  yearFilter?.addEventListener("change", onMonthFilterChange);
+  const onQuarterFilterChange = () => {
+    if (!setSelectedQuarterFilterFromControls()) return;
+
+    currentPeriod = "trimestre";
+    periodSelect.value = currentPeriod;
+    syncMonthFilterControl();
+    renderAll();
+    showToast(`Trimestre alterado para ${formatQuarterFilterLabel(selectedQuarterFilter)}.`);
+  };
+  quarterFilter?.addEventListener("change", onQuarterFilterChange);
+  yearFilter?.addEventListener("change", () => {
+    if (currentPeriod === "trimestre") onQuarterFilterChange();
+    else onMonthFilterChange();
+  });
 
   qs("#departmentSelect").addEventListener("change", (event) => {
     if (!isManagement()) return;

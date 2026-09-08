@@ -1,13 +1,18 @@
 import ExcelJS from "exceljs";
 
+function formatPendingReportDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+  return match ? `${match[3]}/${match[2]}/${match[1].slice(-2)}` : String(value || "");
+}
+
 export function createFillingWorkbook(analysis, departments) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Vonixx Performance";
   workbook.created = new Date();
   const sheet = workbook.addWorksheet("Pendências", { views: [{ state: "frozen", ySplit: 1 }] });
   const rows = departments.flatMap((department) => department.missing.map((item) => [
-    department.department, item.indicator, item.date,
-    item.frequency === "Semanal" ? item.periodKey : "", item.shift, item.frequency,
+    department.department, item.indicator, formatPendingReportDate(item.date),
+    item.frequency === "Semanal" ? formatPendingReportDate(item.periodKey) : "", item.shift, item.frequency,
   ]));
   const columns = ["Departamento", "Indicador", "Data no período", "Início da semana", "Turno", "Frequência"];
   sheet.addTable({
