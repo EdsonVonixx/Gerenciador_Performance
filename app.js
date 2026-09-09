@@ -30,14 +30,16 @@ const vpcSupabaseClient = useSupabasePersistence
     })
   : null;
 const supabaseRealtimeTables = ["vpc_launches", "vpc_action_records", "vpc_five_s_audits"];
-const supabaseRealtimeRefreshDelayMs = 350;
-const supabasePollingFallbackMs = 15000;
+const supabaseRealtimeRefreshDelayMs = 800;
+const supabasePollingFallbackMs = 60000;
 let vpcSupabaseRealtimeChannel = null;
 let vpcSupabaseRefreshTimer = null;
 let vpcSupabasePollingTimer = null;
 let vpcSupabaseSessionRefreshTimer = null;
 let supabaseStateReloadInFlight = false;
 let supabaseStateReloadQueued = false;
+const pendingLocalRealtimeMutations = new Map();
+const localRealtimeMutationTtlMs = 15000;
 
 const actionExtraIndicatorName = "5S Operacional";
 const actionExtraIndicatorDepartments = new Set(["almoxarifado", "estoque"]);
@@ -1129,16 +1131,61 @@ function scheduleSupabaseRealtimeRefresh(reason = "realtime") {
   }, supabaseRealtimeRefreshDelayMs);
 }
 
+function stopSupabasePollingFallback() {
+  if (!vpcSupabasePollingTimer) return;
+  window.clearInterval(vpcSupabasePollingTimer);
+  vpcSupabasePollingTimer = null;
+}
+
+function startSupabasePollingFallback() {
+  if (vpcSupabasePollingTimer) return;
+  vpcSupabasePollingTimer = window.setInterval(() => {
+    refreshSupabaseStateFromRemote({ reason: "polling-fallback" });
+  }, supabasePollingFallbackMs);
+}
+
+function trackLocalRealtimeMutation(table, recordId) {
+  if (!recordId) return;
+  const now = Date.now();
+  pendingLocalRealtimeMutations.forEach((entry, key) => {
+    if (entry.expiresAt <= now) pendingLocalRealtimeMutations.delete(key);
+  });
+  const key = `${table}:${recordId}`;
+  const current = pendingLocalRealtimeMutations.get(key);
+  pendingLocalRealtimeMutations.set(key, {
+    count: (current?.count || 0) + 1,
+    expiresAt: now + localRealtimeMutationTtlMs,
+  });
+}
+
+function discardLocalRealtimeMutation(table, recordId) {
+  if (recordId) pendingLocalRealtimeMutations.delete(`${table}:${recordId}`);
+}
+
+function consumeLocalRealtimeMutation(table, payload) {
+  const recordId = payload?.new?.id || payload?.old?.id;
+  if (!recordId) return false;
+  const key = `${table}:${recordId}`;
+  const entry = pendingLocalRealtimeMutations.get(key);
+  if (!entry || entry.expiresAt <= Date.now()) {
+    pendingLocalRealtimeMutations.delete(key);
+    return false;
+  }
+  if (entry.count > 1) {
+    pendingLocalRealtimeMutations.set(key, { ...entry, count: entry.count - 1 });
+  } else {
+    pendingLocalRealtimeMutations.delete(key);
+  }
+  return true;
+}
+
 function stopSupabaseRealtimeSync() {
   if (vpcSupabaseRefreshTimer) {
     window.clearTimeout(vpcSupabaseRefreshTimer);
     vpcSupabaseRefreshTimer = null;
   }
 
-  if (vpcSupabasePollingTimer) {
-    window.clearInterval(vpcSupabasePollingTimer);
-    vpcSupabasePollingTimer = null;
-  }
+  stopSupabasePollingFallback();
 
   if (vpcSupabaseClient && vpcSupabaseRealtimeChannel) {
     vpcSupabaseClient.removeChannel(vpcSupabaseRealtimeChannel);
@@ -1160,79 +1207,119 @@ function startSupabaseRealtimeSync() {
         schema: "public",
         table,
       },
-      () => scheduleSupabaseRealtimeRefresh(`realtime:${table}`),
+      (payload) => {
+        if (consumeLocalRealtimeMutation(table, payload)) return;
+        scheduleSupabaseRealtimeRefresh(`realtime:${table}`);
+      },
     );
   });
 
   vpcSupabaseRealtimeChannel = channel.subscribe((status, error) => {
-    if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-      console.warn("Canal Realtime indisponível, mantendo polling reserva.", error);
+    if (status === "SUBSCRIBED") {
+      stopSupabasePollingFallback();
+      return;
+    }
+    if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+      console.warn("Canal Realtime indisponível, ativando polling reserva.", error);
+      startSupabasePollingFallback();
     }
   });
-
-  vpcSupabasePollingTimer = window.setInterval(() => {
-    refreshSupabaseStateFromRemote({ reason: "polling" });
-  }, supabasePollingFallbackMs);
 }
 
 async function persistSupabaseLaunch(launch, departmentKey = selectedDepartmentKey) {
   if (!remotePersistenceActive()) return false;
-  await supabaseRestRequest("vpc_launches?on_conflict=id", {
-    method: "POST",
-    prefer: "resolution=merge-duplicates,return=minimal",
-    body: launchToSupabaseRow(launch, departmentKey),
-  });
+  trackLocalRealtimeMutation("vpc_launches", launch.id);
+  try {
+    await supabaseRestRequest("vpc_launches?on_conflict=id", {
+      method: "POST",
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: launchToSupabaseRow(launch, departmentKey),
+    });
+  } catch (error) {
+    discardLocalRealtimeMutation("vpc_launches", launch.id);
+    throw error;
+  }
   return true;
 }
 
 async function deleteSupabaseLaunch(launchId) {
   if (!remotePersistenceActive()) return false;
-  await supabaseRestRequest("vpc_launches", {
-    method: "DELETE",
-    query: `?id=eq.${encodeSupabaseFilterValue(launchId)}`,
-    prefer: "return=minimal",
-  });
+  trackLocalRealtimeMutation("vpc_launches", launchId);
+  try {
+    await supabaseRestRequest("vpc_launches", {
+      method: "DELETE",
+      query: `?id=eq.${encodeSupabaseFilterValue(launchId)}`,
+      prefer: "return=minimal",
+    });
+  } catch (error) {
+    discardLocalRealtimeMutation("vpc_launches", launchId);
+    throw error;
+  }
   return true;
 }
 
 async function persistSupabaseActionRecord(record, departmentKey = selectedDepartmentKey) {
   if (!remotePersistenceActive()) return false;
-  await supabaseRestRequest("vpc_action_records?on_conflict=id", {
-    method: "POST",
-    prefer: "resolution=merge-duplicates,return=minimal",
-    body: actionRecordToSupabaseRow(record, departmentKey),
-  });
+  trackLocalRealtimeMutation("vpc_action_records", record.id);
+  try {
+    await supabaseRestRequest("vpc_action_records?on_conflict=id", {
+      method: "POST",
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: actionRecordToSupabaseRow(record, departmentKey),
+    });
+  } catch (error) {
+    discardLocalRealtimeMutation("vpc_action_records", record.id);
+    throw error;
+  }
   return true;
 }
 
 async function patchSupabaseActionRecord(recordId, patch) {
   if (!remotePersistenceActive()) return false;
-  await supabaseRestRequest("vpc_action_records", {
-    method: "PATCH",
-    query: `?id=eq.${encodeSupabaseFilterValue(recordId)}`,
-    prefer: "return=minimal",
-    body: patch,
-  });
+  trackLocalRealtimeMutation("vpc_action_records", recordId);
+  try {
+    await supabaseRestRequest("vpc_action_records", {
+      method: "PATCH",
+      query: `?id=eq.${encodeSupabaseFilterValue(recordId)}`,
+      prefer: "return=minimal",
+      body: patch,
+    });
+  } catch (error) {
+    discardLocalRealtimeMutation("vpc_action_records", recordId);
+    throw error;
+  }
   return true;
 }
 
 async function deleteSupabaseActionRecord(recordId) {
   if (!remotePersistenceActive()) return false;
-  await supabaseRestRequest("vpc_action_records", {
-    method: "DELETE",
-    query: `?id=eq.${encodeSupabaseFilterValue(recordId)}`,
-    prefer: "return=minimal",
-  });
+  trackLocalRealtimeMutation("vpc_action_records", recordId);
+  try {
+    await supabaseRestRequest("vpc_action_records", {
+      method: "DELETE",
+      query: `?id=eq.${encodeSupabaseFilterValue(recordId)}`,
+      prefer: "return=minimal",
+    });
+  } catch (error) {
+    discardLocalRealtimeMutation("vpc_action_records", recordId);
+    throw error;
+  }
   return true;
 }
 
 async function persistSupabaseFiveSAuditRecord(record, departmentKey = selectedDepartmentKey) {
   if (!remotePersistenceActive()) return false;
-  await supabaseRestRequest("vpc_five_s_audits?on_conflict=department_slug,audit_date", {
-    method: "POST",
-    prefer: "resolution=merge-duplicates,return=minimal",
-    body: fiveSAuditRecordToSupabaseRow(record, departmentKey),
-  });
+  trackLocalRealtimeMutation("vpc_five_s_audits", record.id);
+  try {
+    await supabaseRestRequest("vpc_five_s_audits?on_conflict=department_slug,audit_date", {
+      method: "POST",
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: fiveSAuditRecordToSupabaseRow(record, departmentKey),
+    });
+  } catch (error) {
+    discardLocalRealtimeMutation("vpc_five_s_audits", record.id);
+    throw error;
+  }
   return true;
 }
 
@@ -7604,6 +7691,33 @@ function exportManagementExcel() {
   showToast("Excel gerado.");
 }
 
+function renderCurrentView() {
+  if (currentView === "dashboard") {
+    renderSummary();
+    renderKpis();
+    renderLineCharts();
+    return;
+  }
+  if (currentView === "launches") {
+    renderLaunches();
+    renderLaunchTable();
+    return;
+  }
+  if (currentView === "actions") {
+    renderActions();
+    return;
+  }
+  if (currentView === "treatments") {
+    renderManagementTreatments();
+    return;
+  }
+  if (currentView === "fiveS") {
+    renderFiveS();
+    return;
+  }
+  if (currentView === "tv") renderTv();
+}
+
 function renderAll() {
   if (!isManagement() && currentUser) {
     selectedDepartmentKey = currentUser.departmentKey;
@@ -7613,15 +7727,7 @@ function renderAll() {
   renderUser();
   renderIndicatorOptions();
   syncLaunchShiftOptions();
-  renderSummary();
-  renderKpis();
-  renderLineCharts();
-  renderLaunches();
-  renderLaunchTable();
-  renderActions();
-  renderManagementTreatments();
-  renderFiveS();
-  renderTv();
+  renderCurrentView();
 }
 
 function applyPeriodFilter(nextPeriod, options = {}) {
@@ -7668,6 +7774,7 @@ function setView(view) {
   if (view === "fiveS") return;
   if (isManagement() && (view === "launches" || view === "actions")) view = "dashboard";
 
+  const previousView = currentView;
   currentView = view;
   qsa("[data-view-panel]").forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.viewPanel === view);
@@ -7681,10 +7788,7 @@ function setView(view) {
   renderNavigation();
   renderUser();
   setSidebarOpen(false);
-  if (view === "dashboard") renderLineCharts();
-  if (view === "treatments") renderManagementTreatments();
-  if (view === "fiveS") renderFiveS();
-  if (view === "tv") renderTv();
+  if (view !== previousView) renderCurrentView();
 }
 
 function showToast(message, tone = "") {
