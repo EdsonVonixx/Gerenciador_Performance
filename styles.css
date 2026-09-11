@@ -3673,7 +3673,7 @@ textarea:focus {
 
 .tv-alerts-card {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   align-self: stretch;
   gap: 12px;
 }
@@ -3693,7 +3693,37 @@ textarea:focus {
 
 .tv-alert-table {
   display: grid;
+  align-content: start;
+  min-height: 0;
   gap: 7px;
+}
+
+.tv-alert-table.is-scrollable {
+  height: var(--tv-alert-viewport-height);
+  max-height: var(--tv-alert-viewport-height);
+  padding-right: 7px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(159, 197, 255, 0.7) rgba(18, 56, 105, 0.42);
+  scrollbar-width: thin;
+}
+
+.tv-alert-table.is-scrollable .tv-alert-row {
+  min-height: var(--tv-alert-row-height, 42px);
+}
+
+.tv-alert-table.is-scrollable::-webkit-scrollbar {
+  width: 7px;
+}
+
+.tv-alert-table.is-scrollable::-webkit-scrollbar-track {
+  background: rgba(18, 56, 105, 0.42);
+  border-radius: 4px;
+}
+
+.tv-alert-table.is-scrollable::-webkit-scrollbar-thumb {
+  background: rgba(159, 197, 255, 0.7);
+  border-radius: 4px;
 }
 
 .tv-alert-row {

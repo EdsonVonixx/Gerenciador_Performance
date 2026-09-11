@@ -6684,7 +6684,7 @@ function renderTvPriorityAlertsTable(alerts) {
         </div>
         <span class="tv-alert-icon">${renderTvIcon("alert")}</span>
       </header>
-      <div class="tv-alert-table" role="table" aria-label="Ranking de indicadores críticos">
+      <div class="tv-alert-table" role="table" aria-label="Ranking de indicadores críticos" data-visible-alerts="8">
         ${alerts
           .map(
             (alert, index) => `
@@ -6703,6 +6703,39 @@ function renderTvPriorityAlertsTable(alerts) {
       </div>
     </aside>
   `;
+}
+
+function syncTvPriorityAlertsViewport(settled = false) {
+  const table = qs(".tv-alert-table[data-visible-alerts]");
+  if (!table) return;
+
+  const rows = [...table.querySelectorAll(".tv-alert-row")];
+  const visibleLimit = Number(table.dataset.visibleAlerts) || 8;
+  table.classList.toggle("is-scrollable", rows.length > visibleLimit);
+  table.style.removeProperty("--tv-alert-row-height");
+
+  if (rows.length <= visibleLimit) {
+    table.style.removeProperty("--tv-alert-viewport-height");
+    return;
+  }
+
+  const card = table.closest(".tv-alerts-card");
+  const header = card?.querySelector(":scope > header");
+  const styles = window.getComputedStyle(table);
+  const cardStyles = card ? window.getComputedStyle(card) : null;
+  const columnCount = Math.max(1, styles.gridTemplateColumns.split(" ").filter(Boolean).length);
+  const visibleRowCount = Math.ceil(visibleLimit / columnCount);
+  const rowGap = Number.parseFloat(styles.rowGap) || 0;
+  const cardGap = Number.parseFloat(cardStyles?.rowGap) || 0;
+  const cardPadding = (Number.parseFloat(cardStyles?.paddingTop) || 0) + (Number.parseFloat(cardStyles?.paddingBottom) || 0);
+  const availableHeight = Math.max(42, (card?.clientHeight || table.clientHeight) - cardPadding - (header?.offsetHeight || 0) - cardGap);
+  const rowHeight = Math.max(42, (availableHeight - rowGap * (visibleRowCount - 1)) / visibleRowCount);
+  table.style.setProperty("--tv-alert-viewport-height", `${availableHeight}px`);
+  table.style.setProperty("--tv-alert-row-height", `${rowHeight}px`);
+
+  if (!settled) {
+    window.requestAnimationFrame(() => syncTvPriorityAlertsViewport(true));
+  }
 }
 
 function renderTvExecutiveReadings(readings) {
@@ -7218,6 +7251,7 @@ function renderTv() {
     </section>
   `;
 
+  syncTvPriorityAlertsViewport();
   updateTvClock();
   qs("#exportFillingReport")?.addEventListener("click", () => exportFillingReport(true));
   document.querySelectorAll("[data-filling-department]").forEach((button) => {
@@ -7371,6 +7405,130 @@ function renderExportTable(headers, rows) {
   `;
 }
 
+const launchReportFieldLabels = {
+  correctItems: "Itens corretos",
+  inventoriedItems: "Itens inventariados",
+  totalCountedItems: "Itens contados",
+  accountingStock: "Estoque contábil",
+  wmsStock: "Estoque WMS",
+  divergentSkus: "SKUs divergentes",
+  totalSkus: "Total de SKUs",
+  totalItemsStock: "Itens em estoque",
+  obsoleteItems: "Itens obsoletos",
+  dailyReceipts: "Recebimentos do dia",
+  plannedReceiptCapacity: "Capacidade planejada",
+  onTimeSupplierDeliveries: "Entregas no prazo",
+  scheduledSupplierDeliveries: "Entregas programadas",
+  completedReceiptsOnTime: "Recebimentos no prazo",
+  totalReceipts: "Total de recebimentos",
+  releaseTotalHours: "Tempo total",
+  releasedReceipts: "Recebimentos",
+  readdressedMaterials: "Materiais reendereçados",
+  totalStoredMaterials: "Materiais armazenados",
+  missingItems: "Itens em falta",
+  criticalItems: "Itens críticos",
+  zeroStockMaintenanceItems: "Itens com estoque zerado",
+  stockableMaintenanceItems: "Materiais estocáveis",
+  itemsAboveMinimum: "Itens acima do mínimo",
+  countedSkusPeriod: "SKUs contados",
+  replenishmentSkus: "SKUs de reposição",
+  treatedDivergencesOnTime: "Divergências tratadas",
+  totalDivergences: "Total de divergências",
+  slowMovingSkus: "SKUs acima de 90 dias",
+  totalStockSkus: "SKUs no estoque",
+  completedShiftActivities: "Atividades concluídas",
+  dailyCountedSkus: "Contagens realizadas",
+  collaboratorCount: "Colaboradores",
+  initialStock: "Estoque inicial",
+  entriesValue: "Entradas",
+  outboundValue: "Saídas",
+  receivedLoads: "Cargas recebidas",
+  receiptHours: "Tempo de recebimento",
+  receivedUnits: "Itens recebidos",
+  damagedUnits: "Itens avariados",
+  correctUnits: "Itens corretos",
+  followUpLoads: "Cargas com follow-up em 1h",
+  receivedPallets: "Volume recebido",
+  palletCapacity: "Capacidade de posição",
+  countedItems: "Itens contados",
+  lossItems: "Perdas no estoque",
+  adjustedValue: "Valor ajustado",
+  totalStockValue: "Valor do estoque",
+  wrongOps: "OPs com erro",
+  requestedOps: "OPs solicitadas",
+  expeditionErrorValue: "Sobras e faltas",
+  loadedTrucks: "Carretas carregadas",
+  loadingTotalMinutes: "Tempo de carregamento",
+  chemSupplyOkOps: "OPs sem atraso/divergência",
+  chemTotalOps: "Total de OPs",
+  chemDeliveredOps: "OPs entregues",
+  chemPlannedOps: "OPs previstas",
+  chemReworkOps: "Retrabalhos/repesagens",
+  chemSeparatedOps: "OPs separadas",
+  chemKanbanOver7DaysOps: "OPs acima de 7 dias",
+  chemKanbanTotalOps: "Total no Kanban",
+  chemShiftDeliveredOps: "OPs entregues no turno",
+  chemShiftTargetOps: "Meta do turno",
+  movedItems: "Itens movimentados",
+  movementErrors: "Erros de movimentação",
+  damagedMovedItems: "Itens avariados",
+  waitMinutes: "Tempo de espera",
+};
+
+const launchReportCurrencyFields = new Set([
+  "accountingStock",
+  "wmsStock",
+  "initialStock",
+  "entriesValue",
+  "outboundValue",
+  "adjustedValue",
+  "totalStockValue",
+  "expeditionErrorValue",
+]);
+const launchReportHourFields = new Set(["releaseTotalHours", "receiptHours"]);
+const launchReportMinuteFields = new Set(["loadingTotalMinutes", "waitMinutes"]);
+
+function formatLaunchReportInputValue(field, value) {
+  if (!Number.isFinite(Number(value))) return String(value || "-");
+  const formatted = formatNumber(Number(value));
+  if (launchReportCurrencyFields.has(field)) return `R$ ${formatted}`;
+  if (launchReportHourFields.has(field)) return `${formatted} h`;
+  if (launchReportMinuteFields.has(field)) return `${formatted} min`;
+  if (field === "receivedPallets" || field === "palletCapacity") return `${formatted} paletes`;
+  return formatted;
+}
+
+function getManagementLaunchInputEntries(launch, departmentKey, numericValue) {
+  const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator);
+  const definition = formulaType ? launchFormulaDefinitions[formulaType] : null;
+  const payload = launch.formulaData && typeof launch.formulaData === "object" ? launch.formulaData : {};
+  const entries = (definition?.fields || [])
+    .filter((field) => Number.isFinite(Number(payload[field])))
+    .map((field) => ({
+      field,
+      label: launchReportFieldLabels[field] || field,
+      value: Number(payload[field]),
+    }));
+
+  if (entries.length) return entries;
+  return Number.isFinite(numericValue)
+    ? [{ field: "reportedValue", label: "Valor informado", value: numericValue }]
+    : [];
+}
+
+function summarizeManagementLaunchInputs(launches, departmentKey, indicator) {
+  const totals = new Map();
+  launches.forEach((launch) => {
+    const numericValue = getLaunchNumericValue(launch, indicator);
+    getManagementLaunchInputEntries(launch, departmentKey, numericValue).forEach((entry) => {
+      const current = totals.get(entry.field) || { ...entry, value: 0 };
+      current.value += entry.value;
+      totals.set(entry.field, current);
+    });
+  });
+  return [...totals.values()];
+}
+
 function getManagementLaunchReportRows() {
   const bounds = getDateFilterBounds();
   if (!bounds) return [];
@@ -7379,6 +7537,9 @@ function getManagementLaunchReportRows() {
   operationalDepartmentKeys.forEach((departmentKey) => {
     const department = departments[departmentKey];
     const groupedRows = new Map();
+    const indicatorOrder = new Map(
+      department.indicators.map((indicator, index) => [normalizeTextKey(indicator.name), index]),
+    );
 
     (department.launches || []).forEach((launch) => {
       const launchDate = toDateOrNull(launch.date);
@@ -7390,17 +7551,26 @@ function getManagementLaunchReportRows() {
       groupedRows.get(groupKey).launches.push(launch);
     });
 
-    groupedRows.forEach(({ indicator, monthKey, launches }) => {
+    [...groupedRows.values()]
+      .sort((left, right) => {
+        const indicatorDifference =
+          (indicatorOrder.get(normalizeTextKey(left.indicator.name)) ?? Number.MAX_SAFE_INTEGER) -
+          (indicatorOrder.get(normalizeTextKey(right.indicator.name)) ?? Number.MAX_SAFE_INTEGER);
+        return indicatorDifference || left.monthKey.localeCompare(right.monthKey);
+      })
+      .forEach(({ indicator, monthKey, launches }) => {
       launches
         .sort((left, right) => String(left.date).localeCompare(String(right.date)) || String(left.shift).localeCompare(String(right.shift), "pt-BR"))
         .forEach((launch) => {
           const numericValue = getLaunchNumericValue(launch, indicator);
           rows.push({
             type: "detail",
+            departmentKey,
             department: department.label,
             indicator: indicator.name,
             date: formatDate(launch.date),
             shift: normalizeDepartmentShift(launch.shift, departmentKey),
+            inputs: getManagementLaunchInputEntries(launch, departmentKey, numericValue),
             result: Number.isFinite(numericValue) ? formatMetric(indicator, numericValue) : String(launch.value || "Sem dados"),
           });
         });
@@ -7415,10 +7585,12 @@ function getManagementLaunchReportRows() {
         : null;
       rows.push({
         type: "summary",
+        departmentKey,
         department: department.label,
         indicator: indicator.name,
         date: formatMonthFilterLabel(monthKey),
         shift: "Fechamento mensal",
+        inputs: summarizeManagementLaunchInputs(launches, departmentKey, indicator),
         result: formatMetric(indicator, monthResult),
         target: formatMetric(indicator, indicator.target),
         status: getStatus(indicator, department, monthResult),
@@ -7431,15 +7603,33 @@ function getManagementLaunchReportRows() {
 
 function renderManagementLaunchTable(rows) {
   if (!rows.length) {
-    return renderExportTable(["Setor", "Indicador", "Data", "Turno", "Resultado"], []);
+    return renderExportTable(["Indicador", "Data", "Turno", "Valores de entrada", "Resultado"], []);
   }
-  return `<table class="launch-report-table">
-    <thead><tr><th>Setor</th><th>Indicador</th><th>Data</th><th>Turno</th><th>Resultado</th></tr></thead>
-    <tbody>${rows.map((row) => `<tr class="${row.type === "summary" ? "monthly-result" : ""}">
-      <td>${escapeHtml(row.department)}</td><td>${escapeHtml(row.indicator)}</td><td>${escapeHtml(row.date)}</td>
-      <td>${escapeHtml(row.shift)}</td><td><strong>${escapeHtml(row.result)}</strong></td>
-    </tr>`).join("")}</tbody>
-  </table>`;
+  const renderInputs = (inputs) => inputs?.length
+    ? `<div class="launch-input-list">${inputs.map((entry) => `<span><b>${escapeHtml(entry.label)}:</b> ${escapeHtml(formatLaunchReportInputValue(entry.field, entry.value))}</span>`).join("")}</div>`
+    : '<span class="muted">Sem entradas armazenadas</span>';
+  const sections = operationalDepartmentKeys
+    .map((departmentKey, index) => ({
+      department: departments[departmentKey],
+      tone: (index % 5) + 1,
+      rows: rows.filter((row) => row.departmentKey === departmentKey),
+    }))
+    .filter((section) => section.rows.length);
+
+  return `<div class="launch-report-sections">${sections.map((section) => `
+    <section class="launch-department-section sector-${section.tone}">
+      <table class="launch-report-table">
+        <thead>
+          <tr class="department-title"><th colspan="5">${escapeHtml(section.department.label)}</th></tr>
+          <tr><th>Indicador</th><th>Data</th><th>Turno</th><th>Valores de entrada</th><th>Resultado</th></tr>
+        </thead>
+        <tbody>${section.rows.map((row) => `<tr class="${row.type === "summary" ? "monthly-result" : ""}">
+          <td>${escapeHtml(row.indicator)}</td><td>${escapeHtml(row.date)}</td><td>${escapeHtml(row.shift)}</td>
+          <td>${renderInputs(row.inputs)}</td><td><strong>${escapeHtml(row.result)}</strong></td>
+        </tr>`).join("")}</tbody>
+      </table>
+    </section>
+  `).join("")}</div>`;
 }
 
 function renderManagementExecutiveSummary(rows) {
@@ -7618,6 +7808,24 @@ function buildManagementExportHtml(data) {
             vertical-align: top;
           }
           tr:nth-child(even) td { background: #f5f7fb; }
+          .launch-report-sections { display: grid; gap: 16px; }
+          .launch-department-section { border-top: 5px solid #1d75bd; break-before: auto; }
+          .launch-department-section.sector-2 { border-top-color: #0c9f82; }
+          .launch-department-section.sector-3 { border-top-color: #e29a12; }
+          .launch-department-section.sector-4 { border-top-color: #7357d8; }
+          .launch-department-section.sector-5 { border-top-color: #e14d5a; }
+          .launch-department-section table { margin-bottom: 0; }
+          .launch-report-table thead { display: table-header-group; }
+          .launch-report-table .department-title th { padding: 10px 11px; color: #fff; background: #0f2742; font-size: 14px; }
+          .launch-report-table th:nth-child(1) { width: 27%; }
+          .launch-report-table th:nth-child(2) { width: 11%; }
+          .launch-report-table th:nth-child(3) { width: 11%; }
+          .launch-report-table th:nth-child(4) { width: 38%; }
+          .launch-report-table th:nth-child(5) { width: 13%; }
+          .launch-input-list { display: flex; flex-wrap: wrap; gap: 3px 10px; }
+          .launch-input-list span { display: inline-block; white-space: nowrap; }
+          .launch-input-list b { color: #40556d; }
+          .muted { color: #738196; font-style: italic; }
           .launch-report-table .monthly-result td { color: #083b35; background: #d9f3ed !important; border-top: 2px solid #16a085; font-weight: 700; }
           @media print {
             @page { size: landscape; margin: 10mm; }
@@ -8316,6 +8524,7 @@ function boot() {
 window.addEventListener("resize", () => {
   if (!currentUser) return;
   if (currentView === "dashboard") renderLineCharts();
+  if (currentView === "tv") syncTvPriorityAlertsViewport();
 });
 
 window.setInterval(() => {
