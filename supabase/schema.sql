@@ -72,6 +72,9 @@ create index if not exists vpc_launches_created_by_idx
 create index if not exists vpc_launches_updated_by_idx
   on public.vpc_launches (updated_by);
 
+create index if not exists vpc_launches_updated_at_idx
+  on public.vpc_launches (updated_at desc);
+
 create table if not exists public.vpc_action_records (
   id text primary key,
   department_slug text not null references public.vpc_departments(slug) on delete cascade,
@@ -101,6 +104,9 @@ create index if not exists vpc_action_records_created_by_idx
 create index if not exists vpc_action_records_updated_by_idx
   on public.vpc_action_records (updated_by);
 
+create index if not exists vpc_action_records_updated_at_idx
+  on public.vpc_action_records (updated_at desc);
+
 create table if not exists public.vpc_five_s_audits (
   id text primary key,
   department_slug text not null references public.vpc_departments(slug) on delete cascade,
@@ -122,6 +128,40 @@ create index if not exists vpc_five_s_audits_created_by_idx
 
 create index if not exists vpc_five_s_audits_updated_by_idx
   on public.vpc_five_s_audits (updated_by);
+
+create index if not exists vpc_five_s_audits_updated_at_idx
+  on public.vpc_five_s_audits (updated_at desc);
+
+create or replace function public.vpc_set_audit_fields()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  new.updated_at = now();
+  new.updated_by = coalesce(auth.uid(), new.updated_by);
+  if tg_op = 'INSERT' then
+    new.created_by = coalesce(new.created_by, auth.uid());
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists vpc_launches_set_audit_fields on public.vpc_launches;
+create trigger vpc_launches_set_audit_fields
+before insert or update on public.vpc_launches
+for each row execute function public.vpc_set_audit_fields();
+
+drop trigger if exists vpc_action_records_set_audit_fields on public.vpc_action_records;
+create trigger vpc_action_records_set_audit_fields
+before insert or update on public.vpc_action_records
+for each row execute function public.vpc_set_audit_fields();
+
+drop trigger if exists vpc_five_s_audits_set_audit_fields on public.vpc_five_s_audits;
+create trigger vpc_five_s_audits_set_audit_fields
+before insert or update on public.vpc_five_s_audits
+for each row execute function public.vpc_set_audit_fields();
 
 alter table public.vpc_launches replica identity full;
 alter table public.vpc_action_records replica identity full;
