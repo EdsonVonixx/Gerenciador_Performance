@@ -8572,6 +8572,17 @@ function setupInteractions() {
       launchList.unshift(confirmedLaunch);
     }
 
+    const activePeriodBounds = getDateFilterBounds();
+    const savedLaunchDate = toDateOrNull(confirmedLaunch.date);
+    const revealSavedLaunch =
+      savedLaunchDate &&
+      activePeriodBounds &&
+      !isDateInsidePeriod(savedLaunchDate, activePeriodBounds.startDate, activePeriodBounds.endDate);
+    if (revealSavedLaunch) {
+      selectedMonthFilter = confirmedLaunch.date.slice(0, 7);
+      currentPeriod = "mes";
+    }
+
     writePrototypeState();
     setSubmitButtonBusy(submitButton, false);
     event.currentTarget.reset();
@@ -8580,12 +8591,16 @@ function setupInteractions() {
     syncLaunchFormByIndicator();
     renderAll();
     setView("launches");
+    const saveMessage = wasEditing
+      ? "Resultado editado."
+      : remotePersistenceActive()
+        ? "Resultado incluído na base SQL."
+        : "Resultado incluído.";
     showToast(
-      wasEditing
-        ? "Resultado editado."
-        : remotePersistenceActive()
-          ? "Resultado incluído na base SQL."
-          : "Resultado incluído.",
+      revealSavedLaunch
+        ? `${saveMessage} Exibindo ${formatMonthFilterLabel(selectedMonthFilter)} para mostrar o registro.`
+        : saveMessage,
+      "success",
     );
   });
 
