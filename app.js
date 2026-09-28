@@ -31,7 +31,7 @@ const vpcSupabaseClient = useSupabasePersistence
   : null;
 const supabaseRealtimeTables = ["vpc_launches", "vpc_action_records", "vpc_five_s_audits"];
 const supabaseRealtimeRefreshDelayMs = 800;
-const supabasePollingFallbackMs = 120000;
+const supabasePollingFallbackMs = 10000;
 const supabaseFullRefreshIntervalMs = 10 * 60 * 1000;
 const supabaseRequestTimeoutMs = 15000;
 const supabaseRequestMaxAttempts = 3;
@@ -1395,6 +1395,10 @@ function startSupabaseRealtimeSync() {
   if (!vpcSupabaseClient || !remotePersistenceActive()) return;
 
   updateSupabaseRealtimeAuth();
+  // Keep a lightweight incremental reconciliation active even while Realtime
+  // reports SUBSCRIBED. Postgres Changes may miss events without closing the
+  // channel, and users must not depend on the manual refresh button.
+  startSupabasePollingFallback();
   let channel = vpcSupabaseClient.channel(`vpc-operational-sync-${currentUser?.key || "user"}`);
   supabaseRealtimeTables.forEach((table) => {
     channel = channel.on(
@@ -1415,7 +1419,7 @@ function startSupabaseRealtimeSync() {
 
   vpcSupabaseRealtimeChannel = channel.subscribe((status, error) => {
     if (status === "SUBSCRIBED") {
-      stopSupabasePollingFallback();
+      refreshSupabaseStateIncrementally();
       return;
     }
     if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
@@ -8400,6 +8404,16 @@ function setupInteractions() {
     }
     renderAll();
     showToast(currentView === "tv" ? "TV atualizada." : "Painel atualizado.");
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && remotePersistenceActive()) refreshSupabaseStateIncrementally();
+  });
+  window.addEventListener("focus", () => {
+    if (remotePersistenceActive()) refreshSupabaseStateIncrementally();
+  });
+  window.addEventListener("online", () => {
+    if (remotePersistenceActive()) refreshSupabaseStateIncrementally();
   });
 
   qs("#exportPdfButton")?.addEventListener("click", exportManagementPdf);
