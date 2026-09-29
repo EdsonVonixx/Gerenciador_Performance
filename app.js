@@ -1,4 +1,4 @@
-﻿import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 
 const operationalDepartmentKeys = ["almoxarifado", "recebimento", "estoque", "secos", "quimicas"];
 
@@ -1446,6 +1446,22 @@ async function persistSupabaseLaunch(launch, departmentKey = selectedDepartmentK
     discardLocalRealtimeMutation("vpc_launches", launch.id);
     throw error;
   }
+}
+
+async function findSupabaseDuplicateLaunch(launch, excludedLaunchId = null, departmentKey = selectedDepartmentKey) {
+  if (!remotePersistenceActive()) return null;
+  const row = launchToSupabaseRow(launch, departmentKey);
+  const filters = [
+    "select=id",
+    `department_slug=eq.${encodeSupabaseFilterValue(row.department_slug)}`,
+    `indicator_name=eq.${encodeSupabaseFilterValue(row.indicator_name)}`,
+    `record_date=eq.${encodeSupabaseFilterValue(row.record_date)}`,
+    `shift=eq.${encodeSupabaseFilterValue(row.shift)}`,
+  ];
+  if (excludedLaunchId) filters.push(`id=neq.${encodeSupabaseFilterValue(excludedLaunchId)}`);
+  filters.push("limit=1");
+  const rows = await supabaseRestRequest("vpc_launches", { query: `?${filters.join("&")}` });
+  return Array.isArray(rows) ? rows[0] || null : null;
 }
 
 async function deleteSupabaseLaunch(launchId) {
@@ -4326,6 +4342,10 @@ function findDuplicateLaunch(launch, excludedLaunchId = null, department = curre
     String(item.date || "") === String(launch.date || "") &&
     normalizeTextKey(normalizeDepartmentShift(item.shift)) === shiftKey,
   ) || null;
+}
+
+function getDuplicateLaunchWarning(launch) {
+  return `Lançamento bloqueado: já existe um resultado de “${launch.indicator}” em ${formatDate(launch.date)}, no ${launch.shift}. Edite ou exclua o registro existente antes de tentar novamente.`;
 }
 
 function renderLaunches() {
@@ -8545,16 +8565,20 @@ function setupInteractions() {
     };
     const duplicateLaunch = findDuplicateLaunch(launchRecord, editingLaunchId);
     if (duplicateLaunch) {
-      const allowed = window.confirm(
-        `Já existe um lançamento de “${launchRecord.indicator}” em ${formatDate(launchRecord.date)}, no ${launchRecord.shift}. Deseja continuar e salvar o registro duplicado?`,
-      );
-      if (!allowed) return;
+      showToast(getDuplicateLaunchWarning(launchRecord), "warn");
+      return;
     }
 
     const submitButton = qs("#launchSubmitButton");
     setSubmitButtonBusy(submitButton, true);
     let confirmedLaunch = launchRecord;
     try {
+      const remoteDuplicate = await findSupabaseDuplicateLaunch(launchRecord, editingLaunchId, selectedDepartmentKey);
+      if (remoteDuplicate) {
+        showToast(getDuplicateLaunchWarning(launchRecord), "warn");
+        setSubmitButtonBusy(submitButton, false);
+        return;
+      }
       const persistedLaunch = await persistSupabaseLaunch(launchRecord, selectedDepartmentKey);
       if (persistedLaunch) confirmedLaunch = { ...launchRecord, ...persistedLaunch };
     } catch (error) {
