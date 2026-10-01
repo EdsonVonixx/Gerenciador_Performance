@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+﻿import { createClient } from "@supabase/supabase-js";
 
 const operationalDepartmentKeys = ["almoxarifado", "recebimento", "estoque", "secos", "quimicas"];
 
@@ -31,8 +31,9 @@ const vpcSupabaseClient = useSupabasePersistence
   : null;
 const supabaseRealtimeTables = ["vpc_launches", "vpc_action_records", "vpc_five_s_audits"];
 const supabaseRealtimeRefreshDelayMs = 800;
-const supabasePollingFallbackMs = 10000;
-const supabaseFullRefreshIntervalMs = 10 * 60 * 1000;
+const supabasePollingFallbackMs = 60000;
+const supabaseFullRefreshIntervalMs = 30 * 60 * 1000;
+const supabaseIncrementalLookbackMs = 2 * 60 * 1000;
 const supabaseRequestTimeoutMs = 15000;
 const supabaseRequestMaxAttempts = 3;
 let vpcSupabaseRealtimeChannel = null;
@@ -46,6 +47,8 @@ let supabaseLastFullRefreshAt = 0;
 let supabaseLastIncrementalSyncAt = null;
 const pendingLocalRealtimeMutations = new Map();
 const localRealtimeMutationTtlMs = 15000;
+const confirmedLaunchesAwaitingReconciliation = new Map();
+const confirmedLaunchReconciliationTtlMs = 5 * 60 * 1000;
 
 const actionExtraIndicatorName = "5S Operacional";
 const actionExtraIndicatorDepartments = new Set(["almoxarifado", "estoque"]);
@@ -984,7 +987,6 @@ function launchToSupabaseRow(launch, departmentKey = selectedDepartmentKey) {
     comment: launch.comment || null,
     created_by: launch.createdBy || userId,
     updated_by: userId,
-    updated_at: new Date().toISOString(),
   };
 }
 
@@ -1023,7 +1025,6 @@ function actionRecordToSupabaseRow(record, departmentKey = selectedDepartmentKey
     file_name: serializeRecordFile(record.file),
     created_by: record.createdBy || userId,
     updated_by: userId,
-    updated_at: new Date().toISOString(),
   };
 }
 
@@ -1059,7 +1060,6 @@ function fiveSAuditRecordToSupabaseRow(record, departmentKey = selectedDepartmen
     },
     created_by: record.createdBy || userId,
     updated_by: userId,
-    updated_at: new Date().toISOString(),
   };
 }
 
@@ -1096,6 +1096,49 @@ function resetRemoteDepartmentState(departmentKey) {
     history: [],
     details: [],
   }));
+}
+
+function getRemoteVisibleDepartmentKeys() {
+  return isManagement()
+    ? [...operationalDepartmentKeys]
+    : [currentUser?.departmentKey || selectedDepartmentKey].filter(Boolean);
+}
+
+function buildDepartmentRestFilter() {
+  if (isManagement()) return "";
+  const departmentKey = currentUser?.departmentKey || selectedDepartmentKey;
+  return departmentKey ? `department_slug=eq.${encodeSupabaseFilterValue(departmentKey)}&` : "";
+}
+
+function pruneConfirmedLaunchReconciliation() {
+  const now = Date.now();
+  confirmedLaunchesAwaitingReconciliation.forEach((entry, id) => {
+    if (entry.expiresAt <= now) confirmedLaunchesAwaitingReconciliation.delete(id);
+  });
+}
+
+function rememberConfirmedLaunch(departmentKey, launch) {
+  if (!launch?.id || !departmentKey) return;
+  pruneConfirmedLaunchReconciliation();
+  confirmedLaunchesAwaitingReconciliation.set(launch.id, {
+    departmentKey,
+    launch: clonePlain(launch),
+    expiresAt: Date.now() + confirmedLaunchReconciliationTtlMs,
+  });
+}
+
+function reconcileConfirmedLaunches(remoteLaunchIds, visibleDepartmentKeys) {
+  pruneConfirmedLaunchReconciliation();
+  confirmedLaunchesAwaitingReconciliation.forEach((entry, id) => {
+    if (remoteLaunchIds.has(id)) {
+      confirmedLaunchesAwaitingReconciliation.delete(id);
+      return;
+    }
+    if (!visibleDepartmentKeys.includes(entry.departmentKey)) return;
+    const department = departments[entry.departmentKey];
+    if (!department || department.launches.some((launch) => launch.id === id)) return;
+    department.launches.unshift(clonePlain(entry.launch));
+  });
 }
 
 function rebuildIndicatorsFromLaunches(departmentKey) {
@@ -1144,23 +1187,25 @@ function rebuildIndicatorsFromLaunches(departmentKey) {
 async function loadSupabaseState() {
   if (!remotePersistenceActive()) return false;
   const requestStartedAt = new Date().toISOString();
+  const departmentFilter = buildDepartmentRestFilter();
+  const visibleDepartmentKeys = getRemoteVisibleDepartmentKeys();
 
   const [launchRows, actionRows, fiveSRows] = await Promise.all([
     loadAllSupabaseRows(
       "vpc_launches",
-      "?select=*&order=record_date.desc,created_at.desc",
+      `?select=*&${departmentFilter}order=record_date.desc,created_at.desc`,
     ),
     loadAllSupabaseRows(
       "vpc_action_records",
-      "?select=*&order=record_date.desc,created_at.desc",
+      `?select=*&${departmentFilter}order=record_date.desc,created_at.desc`,
     ),
     supabaseRestRequest(
       "vpc_five_s_audits",
-      { query: "?select=*&order=audit_date.desc,created_at.desc&limit=12" },
+      { query: `?select=*&${departmentFilter}order=audit_date.desc,created_at.desc&limit=12` },
     ),
   ]);
 
-  operationalDepartmentKeys.forEach((departmentKey) => resetRemoteDepartmentState(departmentKey));
+  visibleDepartmentKeys.forEach((departmentKey) => resetRemoteDepartmentState(departmentKey));
 
   (launchRows || []).forEach((row) => {
     const department = departments[row.department_slug];
@@ -1174,6 +1219,9 @@ async function loadSupabaseState() {
     department.records.push(supabaseRowToActionRecord(row));
   });
 
+  const remoteLaunchIds = new Set((launchRows || []).map((row) => row.id));
+  reconcileConfirmedLaunches(remoteLaunchIds, visibleDepartmentKeys);
+
   const migratedReceivingLaunches = migrateReceivingAverageLaunches();
   if (migratedReceivingLaunches.length > 0) {
     await Promise.all(
@@ -1181,7 +1229,7 @@ async function loadSupabaseState() {
     );
   }
 
-  operationalDepartmentKeys.forEach((departmentKey) => rebuildIndicatorsFromLaunches(departmentKey));
+  visibleDepartmentKeys.forEach((departmentKey) => rebuildIndicatorsFromLaunches(departmentKey));
   fiveSAuditRecords = (fiveSRows || []).map((row) => supabaseRowToFiveSAuditRecord(row));
   ensureFiveSAuditRecordsMetadata();
   ensureLaunchIds();
@@ -1199,13 +1247,18 @@ async function refreshSupabaseStateIncrementally() {
   if (supabaseStateReloadInFlight) return false;
 
   const requestStartedAt = new Date().toISOString();
-  const since = encodeSupabaseFilterValue(supabaseLastIncrementalSyncAt);
+  const lastSyncTime = Date.parse(supabaseLastIncrementalSyncAt);
+  const lookbackTime = Number.isFinite(lastSyncTime)
+    ? new Date(lastSyncTime - supabaseIncrementalLookbackMs).toISOString()
+    : supabaseLastIncrementalSyncAt;
+  const since = encodeSupabaseFilterValue(lookbackTime);
+  const departmentFilter = buildDepartmentRestFilter();
   supabaseStateReloadInFlight = true;
   try {
     const [launchRows, actionRows, fiveSRows] = await Promise.all([
-      loadAllSupabaseRows("vpc_launches", `?select=*&updated_at=gt.${since}&order=updated_at.asc`),
-      loadAllSupabaseRows("vpc_action_records", `?select=*&updated_at=gt.${since}&order=updated_at.asc`),
-      loadAllSupabaseRows("vpc_five_s_audits", `?select=*&updated_at=gt.${since}&order=updated_at.asc`),
+      loadAllSupabaseRows("vpc_launches", `?select=*&${departmentFilter}updated_at=gt.${since}&order=updated_at.asc`),
+      loadAllSupabaseRows("vpc_action_records", `?select=*&${departmentFilter}updated_at=gt.${since}&order=updated_at.asc`),
+      loadAllSupabaseRows("vpc_five_s_audits", `?select=*&${departmentFilter}updated_at=gt.${since}&order=updated_at.asc`),
     ]);
 
     const affectedDepartments = new Set();
@@ -1214,6 +1267,7 @@ async function refreshSupabaseStateIncrementally() {
       if (!department) return;
       department.launches = department.launches.filter((launch) => launch.id !== row.id);
       department.launches.unshift(supabaseRowToLaunch(row));
+      confirmedLaunchesAwaitingReconciliation.delete(row.id);
       affectedDepartments.add(row.department_slug);
     });
     actionRows.forEach((row) => {
@@ -1351,6 +1405,7 @@ function applySupabaseRealtimeChange(table, payload) {
     if (!department) return false;
     department.launches = department.launches.filter((launch) => launch.id !== row.id);
     if (!isDelete) department.launches.unshift(supabaseRowToLaunch(row));
+    if (!isDelete) confirmedLaunchesAwaitingReconciliation.delete(row.id);
     rebuildIndicatorsFromLaunches(row.department_slug);
   } else if (table === "vpc_action_records") {
     const department = departments[row.department_slug];
@@ -1409,7 +1464,7 @@ function startSupabaseRealtimeSync() {
         table,
       },
       (payload) => {
-        if (consumeLocalRealtimeMutation(table, payload)) return;
+        consumeLocalRealtimeMutation(table, payload);
         if (!applySupabaseRealtimeChange(table, payload)) {
           scheduleSupabaseRealtimeRefresh(`realtime-recovery:${table}`);
         }
@@ -1441,7 +1496,9 @@ async function persistSupabaseLaunch(launch, departmentKey = selectedDepartmentK
     if (!Array.isArray(rows) || rows[0]?.id !== launch.id) {
       throw new Error("O banco não confirmou o lançamento salvo.");
     }
-    return supabaseRowToLaunch(rows[0]);
+    const confirmedLaunch = supabaseRowToLaunch(rows[0]);
+    rememberConfirmedLaunch(departmentKey, confirmedLaunch);
+    return confirmedLaunch;
   } catch (error) {
     discardLocalRealtimeMutation("vpc_launches", launch.id);
     throw error;
@@ -1513,7 +1570,6 @@ async function patchSupabaseActionRecord(recordId, patch) {
       body: {
         ...patch,
         updated_by: vpcSupabaseSession?.user?.id || null,
-        updated_at: new Date().toISOString(),
       },
     });
     if (!Array.isArray(rows) || rows[0]?.id !== recordId) {
@@ -4373,7 +4429,6 @@ function renderLaunches() {
             <div class="record-head-actions">
               <span class="pill neutral">${escapeHtml(launch.value)}</span>
               <button class="mini-action" data-launch-action="edit" data-launch-id="${escapeAttribute(launch.id)}" type="button">Editar</button>
-              <button class="mini-action danger" data-launch-action="delete" data-launch-id="${escapeAttribute(launch.id)}" type="button">Excluir</button>
             </div>
           </header>
           <p class="action-history-description">${comment ? escapeHtml(comment) : "Sem observação registrada."}</p>
@@ -5429,6 +5484,10 @@ function startLaunchEdit(launchId) {
 }
 
 async function deleteLaunch(launchId) {
+  if (!isManagement()) {
+    showToast("Resultados confirmados não podem ser excluídos. Use Editar para corrigir o lançamento.", "warn");
+    return;
+  }
   const department = currentDepartment();
   const launch = department.launches.find((item) => item.id === launchId);
   if (!launch) return;
