@@ -51,7 +51,7 @@
         <div class="user-card">
           <span class="avatar" id="userInitials" aria-hidden="true"></span>
           <div>
-            <strong id="userName">Almoxarifado U&C</strong>
+            <strong id="userName">Almoxarifado (Uso e Consumo)</strong>
           </div>
         </div>
 
@@ -293,13 +293,23 @@
                   </label>
 
                   <label class="formula-input hidden" data-field="zeroStockMaintenanceItems">
-                    Itens de manutenção com estoque zerado
+                    Itens com estoque zerado
                     <input name="zeroStockMaintenanceItems" type="number" min="0" step="1" placeholder="Ex.: 2" />
                   </label>
 
                   <label class="formula-input hidden" data-field="stockableMaintenanceItems">
-                    Materiais estocáveis de manutenção
+                    Total de materiais estocáveis
                     <input name="stockableMaintenanceItems" type="number" min="1" step="1" placeholder="Ex.: 200" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="dailyAccuracy">
+                    Acuracidade média diária do Kaizen (%)
+                    <input name="dailyAccuracy" type="number" min="0" max="100" step="any" placeholder="Ex.: 97,5" />
+                  </label>
+
+                  <label class="formula-input hidden" data-field="countedSkusDay">
+                    SKUs contados no dia
+                    <input name="countedSkusDay" type="number" min="1" step="1" placeholder="Ex.: 50" />
                   </label>
 
                   <label class="formula-input hidden" data-field="itemsAboveMinimum">

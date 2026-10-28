@@ -58,7 +58,7 @@ const fullShiftOptions = ["Comercial", "Turno A", "Turno B", "Turno C", "Turno D
 const accessProfiles = [
   {
     key: "almoxarifado",
-    label: "Almoxarifado U&C",
+    label: "Almoxarifado (Uso e Consumo)",
     password: "UC1",
     role: "Acesso operacional",
     departmentKey: "almoxarifado",
@@ -120,15 +120,14 @@ const profileAvatarIcons = {
 
 const departments = {
   almoxarifado: {
-    label: "Almoxarifado U&C",
+    label: "Almoxarifado (Uso e Consumo)",
     color: "#1d6b57",
     indicators: [
-      { name: "Ruptura de Material de Estocáveis (Manutenção)", unit: "%", target: 5, goal: "lower", targetLabel: "Meta" },
-      { name: "Acuracidade de Estoque (Itens)", unit: "%", target: 95, goal: "higher", targetLabel: "Meta" },
-      { name: "Aderência ao Estoque Mínimo", unit: "%", target: 95, goal: "higher", targetLabel: "Meta" },
-      { name: "Cumprimento do Plano de Inventário", unit: "%", target: 100, goal: "higher", targetLabel: "Meta" },
-      { name: "Estoque Slow Mover (Maior que 90 dias)", unit: "%", target: 10, goal: "lower", targetLabel: "Meta" },
-      { name: "Produtividade Individual (Uso & Consumo)", unit: "atividades/colab", target: null, goal: "tracking", statusText: "Acompanhamento" },
+      { name: "Ruptura de Materiais Estocáveis", unit: "%", target: 5, goal: "lower", targetLabel: "Meta", frequency: "Diário" },
+      { name: "Acuracidade de Estoque (Itens)", unit: "%", target: 97, goal: "higher", targetLabel: "Meta", frequency: "Diário" },
+      { name: "Aderência ao Estoque Mínimo", unit: "%", target: 95, goal: "higher", targetLabel: "Meta", frequency: "Diário" },
+      { name: "Cumprimento do Plano de Inventário", unit: "%", target: 100, goal: "higher", targetLabel: "Meta", frequency: "Mensal" },
+      { name: "Estoque Slow Mover (> 90 dias)", unit: "%", target: 10, goal: "lower", targetLabel: "Meta", frequency: "Semanal" },
     ],
     launches: [],
     records: [],
@@ -952,6 +951,13 @@ function getIndicatorByName(departmentKey, indicatorName) {
   if (directMatch) return directMatch;
 
   const canonicalNameByAlias = {
+    almoxarifado: {
+      "ruptura de material de estocaveis (manutencao)": "Ruptura de Materiais Estocáveis",
+      "ruptura de materiais de estoque (manutencao)": "Ruptura de Materiais Estocáveis",
+      "ruptura de material de estoque (manutencao)": "Ruptura de Materiais Estocáveis",
+      "ruptura de materias de manutencao": "Ruptura de Materiais Estocáveis",
+      "estoque slow mover (maior que 90 dias)": "Estoque Slow Mover (> 90 dias)",
+    },
     recebimento: {
       "tempo medio de liberacao do material": "Tempo Médio de Recebimento",
     },
@@ -2276,6 +2282,10 @@ function getCardDetails(indicator) {
   }
 
   if (indicatorKey.includes("acuracidade") && indicatorKey.includes("estoque") && indicatorKey.includes("itens")) {
+    const dailyRows = rowsWithFields(["countedSkusDay"]);
+    if (dailyRows.length > 0) {
+      return [["SKUs contados", formatNumber(sumField(dailyRows, "countedSkusDay"))]];
+    }
     const rows = rowsWithFields(["correctItems", "totalCountedItems"]);
     if (rows.length > 0) {
       return [
@@ -2653,9 +2663,8 @@ function restorePrototypeState() {
     if (!department || !savedDepartment) return;
 
     if (Array.isArray(savedDepartment.launches)) {
-      const validIndicators = new Set((department.indicators || []).map((indicator) => normalizeTextKey(indicator.name)));
       department.launches = repairStoredText(clonePlain(savedDepartment.launches)).filter((launch) =>
-        validIndicators.has(normalizeTextKey(launch.indicator)),
+        Boolean(getIndicatorByName(departmentKey, launch.indicator)),
       );
     }
 
@@ -2669,7 +2678,8 @@ function restorePrototypeState() {
       );
 
       department.indicators = department.indicators.map((indicator) => {
-        const savedIndicator = savedIndicators.get(normalizeTextKey(indicator.name));
+        const savedIndicator = savedIndicators.get(normalizeTextKey(indicator.name)) ||
+          [...savedIndicators.values()].find((item) => getIndicatorByName(departmentKey, item.name) === indicator);
         if (!savedIndicator) return indicator;
 
         const nextIndicator = {
@@ -3134,16 +3144,16 @@ launchFormulaDefinitions.recebimento_produtividade_individual = {
 };
 
 launchFormulaDefinitions.ruptura_estocaveis = {
-  title: "Cálculo de Ruptura de Material de Estocáveis",
-  hint: "Ruptura (%) = (Itens de manutenção com estoque zerado / Materiais estocáveis de manutenção) x 100.",
+  title: "Cálculo de Ruptura de Materiais Estocáveis",
+  hint: "Ruptura (%) = (Itens com estoque zerado / Total de materiais estocáveis) x 100.",
   fields: ["zeroStockMaintenanceItems", "stockableMaintenanceItems"],
   allowNegative: false,
 };
 
 launchFormulaDefinitions.acuracidade_uso_consumo = {
-  title: "Cálculo de Acuracidade de Estoque (Itens)",
-  hint: "Acuracidade (%) = (Quantidade de itens corretos / Total de itens contados) x 100.",
-  fields: ["correctItems", "totalCountedItems"],
+  title: "Acuracidade diária de Estoque (Itens)",
+  hint: "Informe a média percentual diária do Kaizen e os SKUs contados. O resultado mensal é a média simples dos percentuais diários; a quantidade de SKUs não altera o cálculo.",
+  fields: ["dailyAccuracy", "countedSkusDay"],
   allowNegative: false,
 };
 
@@ -3191,7 +3201,7 @@ launchFormulaDefinitions.estoque_divergencias_tratadas = {
 
 launchFormulaDefinitions.slow_mover = {
   title: "Cálculo de Estoque Slow Mover",
-  hint: "Slow mover (%) = (SKUs há mais de 90 dias / Total de SKUs no estoque de reposição) x 100.",
+  hint: "Slow mover (%) = (SKUs parados há mais de 90 dias / Total de SKUs no estoque de reposição) x 100.",
   fields: ["slowMovingSkus", "replenishmentSkus"],
   allowNegative: false,
 };
@@ -3508,10 +3518,11 @@ function computeLaunchFormulaValue(formulaType) {
   }
 
   if (formulaType === "acuracidade_uso_consumo") {
-    const correctItems = getLaunchFormulaFieldValue("correctItems");
-    const totalCountedItems = getLaunchFormulaFieldValue("totalCountedItems");
-    if (!Number.isFinite(correctItems) || !Number.isFinite(totalCountedItems) || totalCountedItems <= 0) return NaN;
-    return (correctItems / totalCountedItems) * 100;
+    const dailyAccuracy = getLaunchFormulaFieldValue("dailyAccuracy");
+    const countedSkusDay = getLaunchFormulaFieldValue("countedSkusDay");
+    if (!Number.isFinite(dailyAccuracy) || dailyAccuracy < 0 || dailyAccuracy > 100 ||
+        !Number.isInteger(countedSkusDay) || countedSkusDay <= 0) return NaN;
+    return dailyAccuracy;
   }
 
   if (formulaType === "estoque_acuracidade_sku") {
@@ -3810,6 +3821,8 @@ function syncLaunchFormByIndicator() {
   if (!formulaFields || !titleElement || !hintElement || !valueInput) return;
 
   const allFieldNames = [
+    "dailyAccuracy",
+    "countedSkusDay",
     "correctItems",
     "inventoriedItems",
     "totalCountedItems",
@@ -4611,6 +4624,13 @@ function applyAlmoxarifadoLaunchFormulaDetails(indicator, formulaType, payload) 
   }
 
   if (formulaType === "acuracidade_uso_consumo") {
+    if (Number.isFinite(payload.dailyAccuracy) && Number.isFinite(payload.countedSkusDay)) {
+      indicator.details = [
+        ["Acuracidade diária", `${formatNumber(payload.dailyAccuracy)}%`],
+        ["SKUs contados", formatNumber(payload.countedSkusDay)],
+      ];
+      return;
+    }
     if (!Number.isFinite(payload.correctItems) || !Number.isFinite(payload.totalCountedItems)) return;
     indicator.details = [
       ["Itens corretos", formatNumber(payload.correctItems)],
@@ -5045,8 +5065,8 @@ function extractFormulaPayload(formData, formulaType) {
   }
   if (formulaType === "acuracidade_uso_consumo") {
     return {
-      correctItems: parseLocalizedNumber(formData.get("correctItems")),
-      totalCountedItems: parseLocalizedNumber(formData.get("totalCountedItems")),
+      dailyAccuracy: parseLocalizedNumber(formData.get("dailyAccuracy")),
+      countedSkusDay: parseLocalizedNumber(formData.get("countedSkusDay")),
     };
   }
   if (formulaType === "estoque_acuracidade_sku") {
@@ -5309,8 +5329,8 @@ function buildHistoryEntry(dateValue, numericValue, formulaType, formulaPayload,
     entry.stockableMaintenanceItems = formulaPayload.stockableMaintenanceItems;
   }
   if (formulaType === "acuracidade_uso_consumo") {
-    entry.correctItems = formulaPayload.correctItems;
-    entry.totalCountedItems = formulaPayload.totalCountedItems;
+    entry.dailyAccuracy = formulaPayload.dailyAccuracy;
+    entry.countedSkusDay = formulaPayload.countedSkusDay;
   }
   if (formulaType === "estoque_acuracidade_sku") {
     entry.correctItems = formulaPayload.correctItems;
@@ -6580,7 +6600,7 @@ const tvDashboardData = {
       summary: { onTarget: 1, attention: 0, critical: 4 },
       indicators: [
         {
-          name: "Ruptura de Materiais de Estoque (Manutenção)",
+          name: "Ruptura de Materiais Estocáveis",
           accumulated: "10,4%",
           target: "5%",
           status: "danger",
@@ -6588,7 +6608,7 @@ const tvDashboardData = {
         {
           name: "Acuracidade de Estoque (Itens)",
           accumulated: "100%",
-          target: "95%",
+          target: "97%",
           status: "success",
         },
         {
@@ -6610,10 +6630,6 @@ const tvDashboardData = {
           status: "danger",
         },
       ],
-      productivity: {
-        name: "Produtividade Individual (Uso & Consumo)",
-        value: "15,1 atividades/colab",
-      },
     },
     {
       name: "Recebimento e Armazenagem",
@@ -7208,11 +7224,11 @@ function getTvFillingAnalysis() {
       if (!launchDate || launchDate < startDate || launchDate > effectiveEnd) return;
       const indicatorIdentity = getFillingIndicatorIdentity(departmentKey, launch.indicator);
       const indicator = indicators.find((item) => getFillingIndicatorIdentity(departmentKey, item.name) === indicatorIdentity);
-      const weekly = isWeeklyFillingIndicator(departmentKey, indicator);
+      const frequency = getFillingFrequency(departmentKey, indicator);
       filledKeys.add(
         [
-          weekly ? getFillingWeekKey(launchDate) : getTvDateKey(launchDate),
-          weekly ? "Setor" : normalizeDepartmentShift(launch.shift, departmentKey),
+          getFillingPeriodKey(launchDate, frequency),
+          frequency === "Diário" ? normalizeDepartmentShift(launch.shift, departmentKey) : "Setor",
           indicatorIdentity,
         ].join("|"),
       );
@@ -7226,9 +7242,9 @@ function getTvFillingAnalysis() {
     dateKeys.forEach((dateKey) => {
       getFillingShiftsForDate(dateKey, departmentKey).forEach((shift) => {
         indicators.forEach((indicator) => {
-          const weekly = isWeeklyFillingIndicator(departmentKey, indicator);
-          const periodKey = weekly ? getFillingWeekKey(toDateOrNull(dateKey)) : dateKey;
-          const expectedShift = weekly ? "Setor" : shift;
+          const frequency = getFillingFrequency(departmentKey, indicator);
+          const periodKey = getFillingPeriodKey(toDateOrNull(dateKey), frequency);
+          const expectedShift = frequency === "Diário" ? shift : "Setor";
           const key = [periodKey, expectedShift, getFillingIndicatorIdentity(departmentKey, indicator.name)].join("|");
           if (checkedKeys.has(key)) return;
           checkedKeys.add(key);
@@ -7240,7 +7256,7 @@ function getTvFillingAnalysis() {
 
           missingByShift.set(expectedShift, (missingByShift.get(expectedShift) || 0) + 1);
           missingByDate.set(dateKey, (missingByDate.get(dateKey) || 0) + 1);
-          missing.push({ indicator: indicator.name, date: dateKey, shift: expectedShift, frequency: weekly ? "Semanal" : "Diário", periodKey });
+          missing.push({ indicator: indicator.name, date: dateKey, shift: expectedShift, frequency, periodKey });
         });
       });
     });
@@ -7282,10 +7298,23 @@ function getTvFillingAnalysis() {
   };
 }
 
-function isWeeklyFillingIndicator(departmentKey, indicator) {
+function getFillingFrequency(departmentKey, indicator) {
+  if (["Diário", "Semanal", "Mensal"].includes(indicator?.frequency)) return indicator.frequency;
   const name = normalizeTextKey(indicator?.name || "");
-  return (departmentKey === "estoque" && name.includes("slow mover")) ||
-    (departmentKey === "quimicas" && name.includes("kanban"));
+  if ((departmentKey === "almoxarifado" || departmentKey === "estoque") && name.includes("slow mover")) return "Semanal";
+  if (departmentKey === "quimicas" && name.includes("kanban")) return "Semanal";
+  if (departmentKey === "almoxarifado" && name.includes("cumprimento") && name.includes("plano") && name.includes("inventario")) return "Mensal";
+  return "Diário";
+}
+
+function getFillingPeriodKey(date, frequency) {
+  if (frequency === "Semanal") return getFillingWeekKey(date);
+  if (frequency === "Mensal") return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`;
+  return getTvDateKey(date);
+}
+
+function isWeeklyFillingIndicator(departmentKey, indicator) {
+  return getFillingFrequency(departmentKey, indicator) === "Semanal";
 }
 
 function getFillingShiftsForDate(dateKey, departmentKey) {
@@ -7665,7 +7694,7 @@ async function openFillingDetails(departmentKey) {
     <div class="filling-filters">
       <label>Indicador<select data-filter="indicator"><option value="">Todos</option>${options([...new Set(item.missing.map((row) => row.indicator))])}</select></label>
       <label>Turno<select data-filter="shift"><option value="">Todos</option>${options([...new Set(item.missing.map((row) => row.shift))])}</select></label>
-      <label>Frequência<select data-filter="frequency"><option value="">Todas</option><option>Diário</option><option>Semanal</option></select></label>
+      <label>Frequência<select data-filter="frequency"><option value="">Todas</option><option>Diário</option><option>Semanal</option><option>Mensal</option></select></label>
       <label>De<input type="date" data-filter="from"></label><label>Até<input type="date" data-filter="to"></label>
     </div>
     <p data-count aria-live="polite"></p>
@@ -7678,7 +7707,14 @@ async function openFillingDetails(departmentKey) {
       (!filters.frequency || row.frequency === filters.frequency) &&
       (!filters.from || row.date >= filters.from) && (!filters.to || row.date <= filters.to));
     dialog.querySelector("[data-count]").textContent = item.schedulePending ? "Apuração aguardando escala." : `${rows.length} pendências`;
-    dialog.querySelector("tbody").innerHTML = rows.length ? rows.map((row) => `<tr><td>${escapeHtml(row.indicator)}</td><td>${row.frequency === "Semanal" ? "Semana de " + escapeHtml(formatDateLabel(row.periodKey)) : escapeHtml(formatDateLabel(row.date))}</td><td>${escapeHtml(row.shift)}</td><td>${escapeHtml(row.frequency)}</td></tr>`).join("") : `<tr><td colspan="4">${item.schedulePending ? "Escala ainda não configurada." : "Nenhuma pendência para os filtros selecionados."}</td></tr>`;
+    dialog.querySelector("tbody").innerHTML = rows.length ? rows.map((row) => {
+      const periodLabel = row.frequency === "Semanal"
+        ? "Semana de " + escapeHtml(formatDateLabel(row.periodKey))
+        : row.frequency === "Mensal"
+          ? "Mês de " + escapeHtml(new Date(row.periodKey + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" }))
+          : escapeHtml(formatDateLabel(row.date));
+      return `<tr><td>${escapeHtml(row.indicator)}</td><td>${periodLabel}</td><td>${escapeHtml(row.shift)}</td><td>${escapeHtml(row.frequency)}</td></tr>`;
+    }).join("") : `<tr><td colspan="4">${item.schedulePending ? "Escala ainda não configurada." : "Nenhuma pendência para os filtros selecionados."}</td></tr>`;
   };
   dialog.querySelector("[data-close]").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
@@ -7735,6 +7771,8 @@ function renderExportTable(headers, rows) {
 }
 
 const launchReportFieldLabels = {
+  dailyAccuracy: "Acuracidade diária Kaizen (%)",
+  countedSkusDay: "SKUs contados",
   correctItems: "Itens corretos",
   inventoriedItems: "Itens inventariados",
   totalCountedItems: "Itens contados",
@@ -7831,7 +7869,10 @@ function getManagementLaunchInputEntries(launch, departmentKey, numericValue) {
   const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator);
   const definition = formulaType ? launchFormulaDefinitions[formulaType] : null;
   const payload = launch.formulaData && typeof launch.formulaData === "object" ? launch.formulaData : {};
-  const entries = (definition?.fields || [])
+  const fields = formulaType === "acuracidade_uso_consumo" && payload.dailyAccuracy === undefined
+    ? ["correctItems", "totalCountedItems"]
+    : (definition?.fields || []);
+  const entries = fields
     .filter((field) => Number.isFinite(Number(payload[field])))
     .map((field) => ({
       field,
@@ -7850,6 +7891,7 @@ function summarizeManagementLaunchInputs(launches, departmentKey, indicator) {
   launches.forEach((launch) => {
     const numericValue = getLaunchNumericValue(launch, indicator);
     getManagementLaunchInputEntries(launch, departmentKey, numericValue).forEach((entry) => {
+      if (entry.field === "dailyAccuracy") return;
       const current = totals.get(entry.field) || { ...entry, value: 0 };
       current.value += entry.value;
       totals.set(entry.field, current);
