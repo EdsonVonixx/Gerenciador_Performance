@@ -36,12 +36,16 @@ create table if not exists public.vpc_indicators (
   goal text not null check (goal in ('higher', 'lower', 'tracking')),
   target_label text not null default 'Meta',
   formula_type text,
+  frequency text not null default 'Diário' check (frequency in ('Diário', 'Semanal', 'Mensal')),
   active boolean not null default true,
   position integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (department_slug, name)
 );
+
+alter table public.vpc_indicators
+  add column if not exists frequency text not null default 'Diário';
 
 create table if not exists public.vpc_launches (
   id text primary key,

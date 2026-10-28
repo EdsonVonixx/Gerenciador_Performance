@@ -5,7 +5,7 @@
 
 insert into public.vpc_departments (slug, name, color)
 values
-  ('almoxarifado', 'Almoxarifado U&C', '#1d6b57'),
+  ('almoxarifado', 'Almoxarifado (Uso e Consumo)', '#1d6b57'),
   ('recebimento', 'Recebimento e Armazenagem', '#2f68a7'),
   ('estoque', 'Estoque e Inventário', '#7352a3'),
   ('secos', 'Operação Secos e Expedição', '#b87818'),
@@ -26,6 +26,7 @@ insert into public.vpc_indicators (
   goal,
   target_label,
   formula_type,
+  frequency,
   position
 )
 select
@@ -37,15 +38,19 @@ select
   catalog.goal,
   catalog.target_label,
   catalog.formula_type,
+  case
+    when catalog.formula_type in ('slow_mover', 'estoque_slow_mover', 'quimica_giro_kanban') then 'Semanal'
+    when catalog.slug = 'almoxarifado' and catalog.formula_type = 'cumprimento_plano_inventario' then 'Mensal'
+    else 'Diário'
+  end,
   catalog.position
 from (
   values
-    ('almoxarifado', 'Ruptura de Material de Estocáveis (Manutenção)', '%', 5, 'lower', 'Meta', 'ruptura_estocaveis', 1),
-    ('almoxarifado', 'Acuracidade de Estoque (Itens)', '%', 95, 'higher', 'Meta', 'acuracidade_uso_consumo', 2),
+    ('almoxarifado', 'Ruptura de Materiais Estocáveis', '%', 5, 'lower', 'Meta', 'ruptura_estocaveis', 1),
+    ('almoxarifado', 'Acuracidade de Estoque (Itens)', '%', 97, 'higher', 'Meta', 'acuracidade_uso_consumo', 2),
     ('almoxarifado', 'Aderência ao Estoque Mínimo', '%', 95, 'higher', 'Meta', 'aderencia_estoque_minimo', 3),
     ('almoxarifado', 'Cumprimento do Plano de Inventário', '%', 100, 'higher', 'Meta', 'cumprimento_plano_inventario', 4),
-    ('almoxarifado', 'Estoque Slow Mover (Maior que 90 dias)', '%', 10, 'lower', 'Meta', 'slow_mover', 5),
-    ('almoxarifado', 'Produtividade Individual (Uso & Consumo)', '%', null, 'tracking', 'Acompanhamento', 'produtividade_individual', 6),
+    ('almoxarifado', 'Estoque Slow Mover (> 90 dias)', '%', 10, 'lower', 'Meta', 'slow_mover', 5),
 
     ('recebimento', 'Capacidade de Recebimento Diário', '%', 85, 'higher', 'Meta', 'recebimento_capacidade_diaria', 1),
     ('recebimento', 'OTIF de Recebimento de Fornecedores x Follow Up', '%', 95, 'higher', 'Meta', 'recebimento_otif_fornecedores', 2),
@@ -76,13 +81,19 @@ from (
     ('quimicas', 'Produtividade de OPs Separadas', '%', 100, 'higher', 'Meta', 'quimica_produtividade_ops_separadas', 5),
     ('quimicas', 'Produtividade Individual', 'atividades/colab', null, 'tracking', 'Acompanhamento', 'quimica_produtividade_individual', 6)
 ) as catalog(slug, name, unit, target, goal, target_label, formula_type, position)
-on conflict (department_slug, name) do update
+on conflict (id) do update
 set
+  name = excluded.name,
   unit = excluded.unit,
   target = excluded.target,
   goal = excluded.goal,
   target_label = excluded.target_label,
   formula_type = excluded.formula_type,
+  frequency = excluded.frequency,
   position = excluded.position,
   active = true,
   updated_at = now();
+
+update public.vpc_indicators
+set active = false, updated_at = now()
+where id = 'almoxarifado:produtividade_individual';
