@@ -179,12 +179,12 @@ body .topbar h1{max-width:100%;margin:0;color:#fff!important;font-family:"Work S
 body .topbar .eyebrow{max-width:100%;margin:0 0 4px;color:#d6e8f8!important;line-height:1.35;overflow-wrap:anywhere}
 body .topbar-actions{flex:0 1 auto;min-width:0;max-width:100%;flex-wrap:wrap;align-items:end}
 body .topbar .select-label{color:#e4eef8!important;line-height:1.35}
-body .tv-updated-badge,#tvClock.tv-updated-badge{color:#fff!important;background:color-mix(in srgb,var(--surface-raised) 88%,#0b2744)!important;border:1px solid var(--line-strong)!important;text-shadow:none;box-shadow:var(--glass-shadow)}
+body .tv-updated-badge,#tvClock.tv-updated-badge{color:var(--ink)!important;background:var(--surface-raised)!important;border:1px solid var(--line-strong)!important;text-shadow:none;box-shadow:var(--glass-shadow)}
 body .panel,body .analysis-card,body .record-card,body .launch-history-item,body .tv-sector-card,body .tv-indicator-row,body .tv-alert-row,body .tv-reading-item,body .tv-summary-card,body .analysis-summary-card{min-width:0}
 body .panel :is(h2,h3,h4),body .analysis-card :is(h2,h3,h4),body .record-card :is(h2,h3,h4),body .launch-history-item :is(h2,h3,h4),body .tv-sector-card :is(h2,h3,h4),body .tv-indicator-row :is(h2,h3,h4),body .tv-alert-row :is(h2,h3,h4),body .tv-reading-item :is(h2,h3,h4),body .analysis-summary-card :is(h2,h3,h4){color:var(--ink);overflow-wrap:anywhere;word-break:normal}
 body .tv-section-title h3,body .tv-card-heading h3,body .tv-sector-header h3,body .tv-indicator-name strong,body .tv-indicator-values strong,body .tv-productivity-row strong,body .tv-alert-row>strong,body .tv-alert-row span,body .tv-alert-row em,body .tv-alert-row small{color:var(--ink)!important;overflow-wrap:anywhere;word-break:normal}
 body .tv-sector-card,body .tv-indicator-row,body .tv-alert-row,body .tv-reading-item,body .tv-summary-card,body .tv-filling-row,body .analysis-summary-card,body .analysis-critical-item,body .analysis-executive-item{color:var(--ink)!important}
-body .tv-sector-header{grid-template-columns:auto minmax(0,1fr);align-items:start}
+body .tv-sector-header{grid-template-columns:32px minmax(0,1fr);align-items:start;gap:10px;min-height:64px}
 body .tv-sector-header h3{min-width:0;margin:0;line-height:1.28}
 body .tv-indicator-row{align-content:start;gap:8px;padding:10px 10px 10px 12px}
 body .tv-indicator-name{align-items:flex-start;min-width:0}
@@ -236,3 +236,8 @@ body .kpi-card header{display:flex;align-items:flex-start;gap:8px;min-width:0}
 body .kpi-card h3{flex:1;min-width:0;overflow-wrap:anywhere}
 @media(max-width:760px){body .line-grid{grid-template-columns:1fr}body .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){body .kpi-grid{grid-template-columns:1fr}}
+
+/* Keep numbered markers readable despite inherited light-theme text colors. */
+body .tv-sector-card .tv-sector-rank,body .tv-alert-row > strong{color:#fff!important;background:#123869!important;display:grid;place-items:center;flex-shrink:0;line-height:1;font-variant-numeric:tabular-nums}
+body .tv-alerts-card .eyebrow{color:var(--ink-2)!important}
+body .tv-updated-badge svg{color:inherit;stroke:currentColor}
