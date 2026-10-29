@@ -4101,6 +4101,7 @@ function setSubmitButtonBusy(button, busy, busyLabel = "Salvando...") {
 }
 
 function renderSummary() {
+  if (!qs("#departmentSummary")) return;
   const department = currentDepartment();
   const counts = statusCounts(department.indicators, department);
   qs("#departmentSummary").innerHTML = `
