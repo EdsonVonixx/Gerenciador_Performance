@@ -226,6 +226,26 @@ const chartTheme = {
   analysisEnd: "#ffb000",
 };
 
+function syncChartTheme() {
+  const style = getComputedStyle(document.documentElement);
+  const read = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
+  chartTheme.plotBackground = read("--chart-surface", chartTheme.plotBackground);
+  chartTheme.markerFill = read("--surface", chartTheme.markerFill);
+  chartTheme.axisText = read("--muted", chartTheme.axisText);
+  chartTheme.valueText = read("--ink", chartTheme.valueText);
+  chartTheme.tooltipBackground = read("--surface-raised", chartTheme.tooltipBackground);
+  chartTheme.tooltipBorder = read("--line-strong", chartTheme.tooltipBorder);
+  chartTheme.guide = read("--line-strong", chartTheme.guide);
+  chartTheme.lineGlow = read("--series-1", chartTheme.lineGlow);
+  chartTheme.analysisStart = read("--series-1", chartTheme.analysisStart);
+  chartTheme.analysisMiddle = read("--series-3", chartTheme.analysisMiddle);
+  chartTheme.analysisEnd = read("--series-4", chartTheme.analysisEnd);
+  statusColor.success = read("--good", statusColor.success);
+  statusColor.warn = read("--warning", statusColor.warn);
+  statusColor.danger = read("--critical", statusColor.danger);
+  statusColor.tracking = read("--series-1", statusColor.tracking);
+}
+
 function getTodayInputDate() {
   const today = new Date();
   const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000);
@@ -4140,6 +4160,7 @@ function drawRoundedRect(ctx, x, y, width, height, radius) {
 
 function drawLineChart(canvas, history, lineColor, indicator, options = {}) {
   if (!canvas || history.length === 0) return { points: [] };
+  syncChartTheme();
   const hoverIndex = Number.isInteger(options.hoverIndex) ? options.hoverIndex : null;
 
   const rect = canvas.getBoundingClientRect();
@@ -4172,6 +4193,15 @@ function drawLineChart(canvas, history, lineColor, indicator, options = {}) {
   const domainRange = chartMax - chartMin || 1;
   const xStep = history.length > 1 ? plotWidth / (history.length - 1) : 0;
   const yFor = (value) => padding.top + ((chartMax - Number(value)) / domainRange) * plotHeight;
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--chart-grid").trim() || chartTheme.tooltipBorder;
+  ctx.lineWidth = 1;
+  for (let tick = 0; tick <= 4; tick += 1) {
+    const y = padding.top + (plotHeight / 4) * tick;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(width - padding.right, y);
+    ctx.stroke();
+  }
   const points = history.map((item, index) => ({
     x: padding.left + xStep * index,
     y: yFor(item.value),
@@ -6041,6 +6071,7 @@ function getMonthlyAnalysisData() {
 
 function drawAnalysisMonthlyChart(canvas, data) {
   if (!canvas) return;
+  syncChartTheme();
 
   const rect = canvas.getBoundingClientRect();
   const width = Math.max(320, Math.round(rect.width || 720));
@@ -6083,6 +6114,12 @@ function drawAnalysisMonthlyChart(canvas, data) {
   ctx.textBaseline = "middle";
   [0, 25, 50, 75, 100].forEach((tick) => {
     const y = yFor(tick);
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--chart-grid").trim() || chartTheme.tooltipBorder;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(width - padding.right, y);
+    ctx.stroke();
     ctx.fillStyle = chartTheme.axisText;
     ctx.fillText(`${tick}%`, padding.left - 8, y);
   });
