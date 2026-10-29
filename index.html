@@ -220,6 +220,14 @@
                     <input name="wmsStock" type="number" min="0" step="1" placeholder="Ex.: 32566" />
                   </label>
 
+                  <label class="formula-input hidden" data-field="divergenceValue">
+                    Valor da divergência (R$)
+                    <input name="divergenceValue" type="number" min="0" step="0.01" placeholder="Ex.: 1500,00" />
+                  </label>
+                  <label class="formula-input hidden" data-field="stockValue">
+                    Valor total do estoque (R$)
+                    <input name="stockValue" type="number" min="0.01" step="0.01" placeholder="Ex.: 50000,00" />
+                  </label>
                   <label class="formula-input hidden" data-field="divergentSkus">
                     SKUs com divergência contábil x WMS
                     <input name="divergentSkus" type="number" min="0" step="1" placeholder="Ex.: 150" />
@@ -982,3 +990,4 @@
     <script type="module" src="/app.js?v=20260904-gestao-filtros-export"></script>
   </body>
 </html>
+
