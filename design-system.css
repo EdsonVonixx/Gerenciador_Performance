@@ -108,8 +108,6 @@ body .panel-heading h2::before,body .five-s-card-heading h3::before{content:"";d
 body .eyebrow,body .tv-page-title .eyebrow,body .tv-section-title .eyebrow,body .tv-card-heading .eyebrow,body .analysis-card .eyebrow{color:var(--accent);font-size:10.8px;font-weight:700;letter-spacing:.05em}
 body .kpi-grid{grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
 body .kpi-card{min-height:154px;padding:16px;overflow:hidden;transition:transform .35s,box-shadow .35s}
-body .kpi-card:first-child{color:#fff;background:radial-gradient(ellipse 90% 80% at 100% 0%,rgba(124,196,245,.28),transparent 60%),linear-gradient(150deg,#0d5a9c 0%,#0a3a6e 55%,#071f45 100%)!important;border-color:rgba(255,255,255,.14)}
-body .kpi-card:first-child h3{color:#b9c9e8}body .kpi-card:first-child .kpi-value{color:#fff;text-shadow:0 0 30px rgba(142,209,252,.35)}body .kpi-card:first-child .pill{color:#fff;background:rgba(255,255,255,.14)}
 body .kpi-card:has(.pill.danger){border-color:color-mix(in srgb,var(--critical) 45%,var(--glass-border))}body .kpi-card:has(.pill.danger) .kpi-value{color:var(--critical)}
 body .kpi-card h3{color:var(--muted);font-size:10.8px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
 body .kpi-value{color:var(--ink);font-family:Fraunces,Georgia,serif;font-size:33px;font-weight:700;font-variant-numeric:tabular-nums}
@@ -202,7 +200,6 @@ body .launch-history-meta,body .launch-history-comment{color:var(--muted)!import
 body .launch-history-actions{align-items:center;flex-wrap:wrap;color:var(--ink)}
 body .kpi-card{display:flex;flex-direction:column;justify-content:space-between;gap:10px;min-height:132px}
 body .kpi-card h3{max-width:100%;color:var(--ink-2)!important;font-size:clamp(11px,.9vw,13px);line-height:1.35;letter-spacing:0;overflow-wrap:anywhere}
-body .kpi-card:first-child h3{color:#e2f1ff!important}
 body .kpi-card .kpi-value{line-height:1.05;overflow-wrap:anywhere}
 body .status-card,body .record-card p,body .record-card span,body .analysis-summary-card span,body .analysis-summary-card small,body .tv-sector-card span,body .tv-indicator-row small,body .tv-filling-row span{color:var(--ink-2)}
 body .pill{max-width:100%;line-height:1.35;white-space:normal;text-align:center}
@@ -211,3 +208,31 @@ body .tv-alerts-card h3{color:var(--ink)!important;line-height:1.3}
 body .topbar .icon-button,body .topbar .ghost-button{color:#fff!important}
 @media(max-width:980px){body .topbar-title-group{flex-basis:calc(100% - 210px)}body .topbar-actions{flex:1 0 100%;justify-content:flex-start}body .topbar-brand-logo{width:132px}}
 @media(max-width:600px){body .topbar{gap:10px;padding:16px}body .topbar-brand-logo{width:104px;height:34px}body .topbar-title-group{flex:1 1 calc(100% - 160px);min-width:0}body .topbar h1{font-size:24px}body .topbar-actions{gap:8px}body .tv-sector-header h3{font-size:.98rem}body .tv-indicator-name strong{font-size:.82rem}}
+
+/* Contrast corrections and restrained target guides for the dashboard. */
+:root{--chart-target:#b66a00}
+:root[data-theme="dark"]{--chart-target:#f4bd4f}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--chart-target:#f4bd4f}}
+body #departmentSummary{display:none!important}
+body .kpi-card:first-child{color:var(--ink)!important;background:var(--glass-bg)!important;border:1px solid var(--glass-border)!important}
+body .kpi-card:first-child h3,body .kpi-card:first-child .kpi-value{color:var(--ink-2)!important;text-shadow:none!important}
+body .kpi-card:first-child .pill{color:var(--ink-2)!important;background:color-mix(in srgb,var(--navy2) 12%,var(--surface))!important}
+body .line-canvas{background:var(--chart-surface)!important;background-image:none!important}
+body .formula-title,body .formula-hint{color:var(--ink-2)!important;line-height:1.45}
+body .hamburger,body .hamburger::before,body .hamburger::after{background:#fff!important}
+body .user-card{color:var(--ink)!important;background:var(--surface-raised)!important;border-color:var(--line-strong)!important;box-shadow:var(--glass-shadow)}
+body .user-card strong,body .user-card span{color:var(--ink)!important;line-height:1.4;overflow-wrap:anywhere}
+body .sidebar .brand-row{background:var(--surface-raised)!important;border-color:var(--line-strong)!important}
+body .nav-item{color:var(--ink-2)!important}
+body .nav-item:hover,body .nav-item.active{color:var(--ink)!important;background:color-mix(in srgb,var(--accent) 13%,var(--surface))!important;border-color:color-mix(in srgb,var(--accent) 34%,var(--line))!important}
+body .sidebar-foot .ghost-button{color:var(--ink)!important;background:var(--surface-raised)!important;border-color:var(--line-strong)!important}
+body .sidebar .nav-icon{opacity:.92;filter:contrast(1.2)}
+body .status-card{color:var(--ink-2)!important}
+body .line-card header{align-items:flex-start;gap:10px}
+body .line-card header h3{min-width:0;line-height:1.3;overflow-wrap:anywhere}
+body .line-values{align-items:center;flex-wrap:wrap;gap:8px}
+body .line-value{color:var(--ink-2)!important;line-height:1.35}
+body .kpi-card header{display:flex;align-items:flex-start;gap:8px;min-width:0}
+body .kpi-card h3{flex:1;min-width:0;overflow-wrap:anywhere}
+@media(max-width:760px){body .line-grid{grid-template-columns:1fr}body .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){body .kpi-grid{grid-template-columns:1fr}}
