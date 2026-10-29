@@ -1,4 +1,4 @@
-﻿import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 
 const operationalDepartmentKeys = ["almoxarifado", "recebimento", "estoque", "secos", "quimicas"];
 
@@ -150,18 +150,11 @@ const departments = {
     label: "Estoque e Inventário",
     color: "#7352a3",
     indicators: [
-      { name: "Acuracidade de Estoque (SKU)", unit: "%", target: 95, goal: "higher", targetLabel: "Meta" },
-      { name: "Divergência Contábil x WMS (SKU)", unit: "%", target: 8, goal: "lower", targetLabel: "Meta" },
-      { name: "Cumprimento do Plano de Inventário", unit: "%", target: 100, goal: "higher", targetLabel: "Meta" },
-      { name: "Índice de Divergências Tratadas", unit: "%", target: 98, goal: "higher", targetLabel: "Meta" },
-      { name: "Estoque Slow Mover (Maior que 90 dias)", unit: "%", target: 10, goal: "lower", targetLabel: "Meta" },
-      {
-        name: "Produtividade de Contagens",
-        unit: "SKU/dia",
-        target: 20,
-        goal: "higher",
-        targetLabel: "Meta",
-      },
+      { name: "Acuracidade de Estoque (Geral)", unit: "%", target: 97, goal: "higher", targetLabel: "Meta", frequency: "Diário", category: "Estratégico" },
+      { name: "Cumprimento do Plano de Inventário", unit: "%", target: 100, goal: "higher", targetLabel: "Meta", frequency: "Mensal", category: "Tático/Operacional" },
+      { name: "Divergência Contábil x WMS (SKU)", unit: "%", target: 3, goal: "lower", targetLabel: "Meta", frequency: "Diário", category: "Estratégico" },
+      { name: "Índice de Divergências Tratadas", unit: "%", target: 98, goal: "higher", targetLabel: "Meta", frequency: "Semanal", category: "Tático/Operacional" },
+      { name: "Estoque Slow Mover (Maior que 90 dias)", unit: "%", target: 10, goal: "lower", targetLabel: "Meta", frequency: "Semanal", category: "Tático/Operacional" },
     ],
     launches: [],
     records: [],
@@ -973,6 +966,9 @@ function getIndicatorByName(departmentKey, indicatorName) {
   if (directMatch) return directMatch;
 
   const canonicalNameByAlias = {
+    estoque: {
+      "acuracidade de estoque (sku)": "Acuracidade de Estoque (Geral)",
+    },
     almoxarifado: {
       "ruptura de material de estocaveis (manutencao)": "Ruptura de Materiais Estocáveis",
       "ruptura de materiais de estoque (manutencao)": "Ruptura de Materiais Estocáveis",
@@ -2072,6 +2068,18 @@ function getCardDetails(indicator) {
   const sumField = averageField;
   const formatNumber = formatIntegerDisplay;
 
+  if (indicatorKey.includes("acuracidade") && indicatorKey.includes("geral")) {
+    const rows = rowsWithFields(["countedSkusDay"]);
+    return rows.length ? [["SKUs contados", formatNumber(totalField(rows, "countedSkusDay"))]] : [];
+  }
+  if (indicatorKey.includes("divergencia") && indicatorKey.includes("contabil")) {
+    const rows = rowsWithFields(["divergenceValue", "stockValue"]);
+    if (rows.length) return [
+      ["Divergência (R$)", formatNumber(averageField(rows, "divergenceValue"))],
+      ["Estoque (R$)", formatNumber(averageField(rows, "stockValue"))],
+    ];
+  }
+
   if (indicatorKey.includes("capacidade") && indicatorKey.includes("recebimento")) {
     const rows = rowsWithFields(["dailyReceipts", "plannedReceiptCapacity"]);
     if (rows.length > 0) {
@@ -2967,11 +2975,12 @@ function getLaunchFormulaType(indicatorName) {
     }
   }
   if (selectedDepartmentKey === "estoque") {
+    if (key.includes("acuracidade") && key.includes("geral")) return "acuracidade_uso_consumo";
     if (key.includes("acuracidade") && key.includes("estoque") && key.includes("sku")) {
       return "estoque_acuracidade_sku";
     }
     if (key.includes("divergencia") && key.includes("contabil") && key.includes("wms")) {
-      return "estoque_divergencia_wms_sku";
+      return "estoque_divergencia_wms_valor";
     }
     if (key.includes("cumprimento") && key.includes("plano") && key.includes("inventario")) {
       return "estoque_cumprimento_plano_inventario";
@@ -3173,7 +3182,7 @@ launchFormulaDefinitions.ruptura_estocaveis = {
 };
 
 launchFormulaDefinitions.acuracidade_uso_consumo = {
-  title: "Acuracidade diária de Estoque (Itens)",
+  title: "Acuracidade média diária de Estoque",
   hint: "Informe a média percentual diária do Kaizen e os SKUs contados. O resultado mensal é a média simples dos percentuais diários; a quantidade de SKUs não altera o cálculo.",
   fields: ["dailyAccuracy", "countedSkusDay"],
   allowNegative: false,
@@ -3190,6 +3199,13 @@ launchFormulaDefinitions.estoque_divergencia_wms_sku = {
   title: "Cálculo de Divergência Contábil x WMS (SKU)",
   hint: "Divergência (%) = (SKUs com divergência contábil x WMS / Total de SKUs) x 100.",
   fields: ["divergentSkus", "totalSkus"],
+  allowNegative: false,
+};
+
+launchFormulaDefinitions.estoque_divergencia_wms_valor = {
+  title: "Divergência Contábil x WMS em valor",
+  hint: "Divergência (%) = (Valor da divergência em R$ / Valor total do estoque em R$) x 100.",
+  fields: ["divergenceValue", "stockValue"],
   allowNegative: false,
 };
 
@@ -3434,6 +3450,12 @@ function getLaunchFormulaFieldValue(fieldName) {
 }
 
 function computeLaunchFormulaValue(formulaType) {
+  if (formulaType === "estoque_divergencia_wms_valor") {
+    const divergence = getLaunchFormulaFieldValue("divergenceValue");
+    const stock = getLaunchFormulaFieldValue("stockValue");
+    return Number.isFinite(divergence) && divergence >= 0 && Number.isFinite(stock) && stock > 0
+      ? (divergence / stock) * 100 : NaN;
+  }
   if (formulaType === "acuracidade") {
     const correctItems = getLaunchFormulaFieldValue("correctItems");
     const inventoriedItems = getLaunchFormulaFieldValue("inventoriedItems");
@@ -3843,6 +3865,8 @@ function syncLaunchFormByIndicator() {
   if (!formulaFields || !titleElement || !hintElement || !valueInput) return;
 
   const allFieldNames = [
+    "divergenceValue",
+    "stockValue",
     "dailyAccuracy",
     "countedSkusDay",
     "correctItems",
@@ -5026,6 +5050,10 @@ function applyQuimicasLaunchFormulaDetails(indicator, formulaType, payload) {
 }
 
 function extractFormulaPayload(formData, formulaType) {
+  if (formulaType === "estoque_divergencia_wms_valor") return {
+    divergenceValue: parseLocalizedNumber(formData.get("divergenceValue")),
+    stockValue: parseLocalizedNumber(formData.get("stockValue")),
+  };
   if (!formulaType) return null;
 
   if (formulaType === "acuracidade") {
@@ -5322,6 +5350,10 @@ function extractFormulaPayload(formData, formulaType) {
 function buildHistoryEntry(dateValue, numericValue, formulaType, formulaPayload, launchId) {
   const entry = { date: dateValue, value: numericValue, launchId };
   if (!formulaType || !formulaPayload) return entry;
+  if (formulaType === "estoque_divergencia_wms_valor") {
+    entry.divergenceValue = formulaPayload.divergenceValue;
+    entry.stockValue = formulaPayload.stockValue;
+  }
   if (formulaType === "acuracidade") {
     entry.correctItems = formulaPayload.correctItems;
     entry.inventoriedItems = formulaPayload.inventoriedItems;
@@ -7823,6 +7855,8 @@ function renderExportTable(headers, rows) {
 }
 
 const launchReportFieldLabels = {
+  divergenceValue: "Valor da divergência (R$)",
+  stockValue: "Valor total do estoque (R$)",
   dailyAccuracy: "Acuracidade diária Kaizen (%)",
   countedSkusDay: "SKUs contados",
   correctItems: "Itens corretos",
@@ -9004,3 +9038,4 @@ window.setInterval(() => {
 }, 30000);
 
 boot();
+
