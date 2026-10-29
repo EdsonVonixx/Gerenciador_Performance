@@ -2069,6 +2069,13 @@ function getCardDetails(indicator) {
     const rows = rowsWithFields(["countedSkusDay"]);
     return rows.length ? [["SKUs contados", formatNumber(totalField(rows, "countedSkusDay"))]] : [];
   }
+  if (selectedDepartmentKey === "estoque" && indicatorKey.includes("cumprimento")) {
+    const rows = rowsWithFields(["countedSkusPeriod", "totalStockSkus"]);
+    if (rows.length) return [
+      ["SKUs contados", formatNumber(averageField(rows, "countedSkusPeriod"))],
+      ["Total de SKUs no estoque", formatNumber(averageField(rows, "totalStockSkus"))],
+    ];
+  }
   if (indicatorKey.includes("divergencia") && indicatorKey.includes("contabil")) {
     const rows = rowsWithFields(["divergenceValue", "stockValue"]);
     if (rows.length) return [
@@ -3222,8 +3229,8 @@ launchFormulaDefinitions.cumprimento_plano_inventario = {
 
 launchFormulaDefinitions.estoque_cumprimento_plano_inventario = {
   title: "Cálculo de Cumprimento do Plano de Inventário",
-  hint: "Cumprimento (%) = (SKUs contados no período / Total de SKUs no estoque de reposição) x 100.",
-  fields: ["countedSkusPeriod", "replenishmentSkus"],
+  hint: "Cumprimento (%) = (SKUs contados no período / Total de SKUs no estoque) x 100.",
+  fields: ["countedSkusPeriod", "totalStockSkus"],
   allowNegative: false,
 };
 
@@ -3598,9 +3605,9 @@ function computeLaunchFormulaValue(formulaType) {
 
   if (formulaType === "estoque_cumprimento_plano_inventario") {
     const countedSkusPeriod = getLaunchFormulaFieldValue("countedSkusPeriod");
-    const replenishmentSkus = getLaunchFormulaFieldValue("replenishmentSkus");
-    if (!Number.isFinite(countedSkusPeriod) || !Number.isFinite(replenishmentSkus) || replenishmentSkus <= 0) return NaN;
-    return (countedSkusPeriod / replenishmentSkus) * 100;
+    const totalStockSkus = getLaunchFormulaFieldValue("totalStockSkus");
+    if (!Number.isFinite(countedSkusPeriod) || countedSkusPeriod < 0 || !Number.isFinite(totalStockSkus) || totalStockSkus <= 0) return NaN;
+    return (countedSkusPeriod / totalStockSkus) * 100;
   }
 
   if (formulaType === "estoque_divergencias_tratadas") {
@@ -4850,6 +4857,13 @@ function applyEstoqueLaunchFormulaDetails(indicator, formulaType, payload) {
   }
 
   if (formulaType === "estoque_cumprimento_plano_inventario") {
+    if (Number.isFinite(payload.countedSkusPeriod) && Number.isFinite(payload.totalStockSkus)) {
+      indicator.details = [
+        ["SKUs contados", formatNumber(payload.countedSkusPeriod)],
+        ["Total de SKUs no estoque", formatNumber(payload.totalStockSkus)],
+      ];
+      return;
+    }
     if (!Number.isFinite(payload.countedSkusPeriod) || !Number.isFinite(payload.replenishmentSkus)) return;
     indicator.details = [
       ["SKUs contados", formatNumber(payload.countedSkusPeriod)],
@@ -5166,7 +5180,7 @@ function extractFormulaPayload(formData, formulaType) {
   if (formulaType === "estoque_cumprimento_plano_inventario") {
     return {
       countedSkusPeriod: parseLocalizedNumber(formData.get("countedSkusPeriod")),
-      replenishmentSkus: parseLocalizedNumber(formData.get("replenishmentSkus")),
+      totalStockSkus: parseLocalizedNumber(formData.get("totalStockSkus")),
     };
   }
   if (formulaType === "estoque_divergencias_tratadas") {
@@ -5425,6 +5439,7 @@ function buildHistoryEntry(dateValue, numericValue, formulaType, formulaPayload,
   if (formulaType === "estoque_cumprimento_plano_inventario") {
     entry.countedSkusPeriod = formulaPayload.countedSkusPeriod;
     entry.replenishmentSkus = formulaPayload.replenishmentSkus;
+    entry.totalStockSkus = formulaPayload.totalStockSkus;
   }
   if (formulaType === "estoque_divergencias_tratadas") {
     entry.treatedDivergencesOnTime = formulaPayload.treatedDivergencesOnTime;
@@ -7954,6 +7969,8 @@ function getManagementLaunchInputEntries(launch, departmentKey, numericValue) {
   const payload = launch.formulaData && typeof launch.formulaData === "object" ? launch.formulaData : {};
   const fields = formulaType === "acuracidade_uso_consumo" && payload.dailyAccuracy === undefined
     ? ["correctItems", "totalCountedItems"]
+    : formulaType === "estoque_cumprimento_plano_inventario" && payload.totalStockSkus === undefined
+      ? ["countedSkusPeriod", "replenishmentSkus"]
     : (definition?.fields || []);
   const entries = fields
     .filter((field) => Number.isFinite(Number(payload[field])))
