@@ -4012,7 +4012,7 @@ function renderNavigation() {
     appShell.classList.toggle("treatments-mode", currentView === "treatments");
     appShell.dataset.activeView = currentView;
   }
-  const consolidatedManagementViews = ["tv", "treatments"];
+  const consolidatedManagementViews = ["tv", "treatments", "duplicates"];
   qsa(".management-only").forEach((item) => item.classList.toggle("hidden", !isManagement()));
   qsa(".operational-only").forEach((item) => item.classList.toggle("hidden", isManagement()));
   qsa(".chemical-only").forEach((item) => item.classList.add("hidden"));
@@ -5565,7 +5565,7 @@ function startLaunchEdit(launchId) {
 
   const launchForm = qs("#launchForm");
   launchForm.reset();
-  launchForm.elements.indicator.value = launch.indicator;
+  launchForm.elements.indicator.value = getIndicatorByName(selectedDepartmentKey, launch.indicator)?.name || launch.indicator;
   syncLaunchFormByIndicator();
   syncLaunchShiftOptions();
   launchForm.elements.date.value = launch.date;
@@ -8370,7 +8370,71 @@ function exportManagementExcel() {
   showToast("Excel gerado.");
 }
 
+function getDuplicateLaunchGroups() {
+  const groups = new Map();
+  const allDates = operationalDepartmentKeys.flatMap(key => departments[key].launches.map(row => row.date));
+  const bounds = getDateFilterBounds(allDates);
+  if (!bounds) return [];
+  for (const departmentKey of operationalDepartmentKeys) {
+    for (const launch of departments[departmentKey].launches) {
+      const date = toDateOrNull(launch.date);
+      if (!date || !isDateInsidePeriod(date, bounds.startDate, bounds.endDate)) continue;
+      const indicator = getIndicatorByName(departmentKey, launch.indicator);
+      const name = indicator?.name || launch.indicator;
+      const shift = normalizeDepartmentShift(launch.shift, departmentKey);
+      const key = JSON.stringify([departmentKey, normalizeTextKey(name), launch.date, shift]);
+      if (!groups.has(key)) groups.set(key, { departmentKey, name, date: launch.date, shift, editable: Boolean(indicator), launches: [] });
+      groups.get(key).launches.push(launch);
+    }
+  }
+  return [...groups.values()].filter(group => group.launches.length > 1)
+    .sort((a, b) => b.date.localeCompare(a.date) || a.name.localeCompare(b.name));
+}
+
+function renderDuplicateLaunches() {
+  if (!isManagement()) return;
+  const sector = qs("#duplicateDepartment");
+  if (sector.options.length === 1) sector.insertAdjacentHTML("beforeend", operationalDepartmentKeys.map(key =>
+    `<option value="${escapeAttribute(key)}">${escapeHtml(departments[key].label)}</option>`).join(""));
+  const search = normalizeTextKey(qs("#duplicateSearch").value);
+  const date = qs("#duplicateDate").value;
+  const shift = qs("#duplicateShift").value;
+  const groups = getDuplicateLaunchGroups().filter(group =>
+    (!sector.value || group.departmentKey === sector.value) &&
+    (!search || normalizeTextKey(group.name).includes(search)) &&
+    (!date || group.date === date) && (!shift || group.shift === shift));
+  qs("#duplicateCount").textContent = `${groups.length} grupos · ${groups.reduce((sum, group) => sum + group.launches.length, 0)} registros`;
+  qs("#duplicateResults").innerHTML = groups.length ? groups.map(group => `
+    <section class="duplicate-group">
+      <h3>${escapeHtml(departments[group.departmentKey].label)} · ${escapeHtml(group.name)}</h3>
+      <p>${escapeHtml(formatDate(group.date))} · ${escapeHtml(group.shift)}</p>
+      <div class="table-wrap"><table><thead><tr><th>Registro</th><th>Resultado</th><th>Observação</th><th>Ações</th></tr></thead><tbody>
+      ${group.launches.map(launch => `<tr><td>${escapeHtml(String(launch.id))}</td><td>${escapeHtml(String(launch.value ?? launch.numericValue ?? ""))}</td><td>${escapeHtml(launch.comment || "—")}</td><td>
+        <button type="button" class="ghost-button" data-duplicate-edit="${escapeAttribute(launch.id)}" data-sector="${escapeAttribute(group.departmentKey)}" ${group.editable ? "" : 'disabled title="Indicador desativado"'}>Editar</button>
+        <button type="button" class="ghost-button" data-duplicate-delete="${escapeAttribute(launch.id)}" data-sector="${escapeAttribute(group.departmentKey)}">Excluir</button>
+      </td></tr>`).join("")}</tbody></table></div>
+    </section>`).join("") : '<p>Nenhuma duplicidade encontrada para os filtros selecionados.</p>';
+  for (const id of ["duplicateDepartment", "duplicateSearch", "duplicateDate", "duplicateShift"]) qs(`#${id}`).oninput = renderDuplicateLaunches;
+  qs("#duplicateResults").onclick = async event => {
+    const button = event.target.closest("[data-duplicate-edit], [data-duplicate-delete]");
+    if (!button || !isManagement()) return;
+    selectedDepartmentKey = button.dataset.sector;
+    if (button.dataset.duplicateEdit) {
+      renderIndicatorOptions();
+      startLaunchEdit(button.dataset.duplicateEdit);
+    } else {
+      button.disabled = true;
+      try { await deleteLaunch(button.dataset.duplicateDelete); }
+      finally { if (currentView === "duplicates") renderDuplicateLaunches(); }
+    }
+  };
+}
+
 function renderCurrentView() {
+  if (currentView === "duplicates") {
+    renderDuplicateLaunches();
+    return;
+  }
   if (currentView === "dashboard") {
     renderSummary();
     renderKpis();
@@ -8449,9 +8513,9 @@ function setSidebarOpen(nextOpen) {
 function setView(view) {
   if (!currentUser) return;
   if (view === "analyses") view = "dashboard";
-  if (!isManagement() && (view === "tv" || view === "treatments")) return;
+  if (!isManagement() && ["tv", "treatments", "duplicates"].includes(view)) return;
   if (view === "fiveS") return;
-  if (isManagement() && (view === "launches" || view === "actions")) view = "dashboard";
+  if (isManagement() && (view === "actions" || (view === "launches" && !editingLaunchId))) view = "dashboard";
 
   const previousView = currentView;
   currentView = view;
@@ -8702,6 +8766,7 @@ function setupInteractions() {
     setDefaultDates();
     resetLaunchFormState();
     syncLaunchFormByIndicator();
+    if (isManagement()) setView("duplicates");
   });
 
   qs("#activityList").addEventListener("click", (event) => {
@@ -8732,10 +8797,11 @@ function setupInteractions() {
 
   qs("#launchForm").addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (isManagement()) return;
+    if (isManagement() && !editingLaunchId) return;
+    const submittedForm = event.currentTarget;
 
     updateLaunchResultFromFormula();
-    const data = new FormData(event.currentTarget);
+    const data = new FormData(submittedForm);
     const indicator = currentDepartment().indicators.find((item) => item.name === data.get("indicator"));
     const value = parseLocalizedNumber(data.get("value"));
     const formulaType = getLaunchFormulaType(String(data.get("indicator")));
@@ -8824,12 +8890,12 @@ function setupInteractions() {
 
     writePrototypeState();
     setSubmitButtonBusy(submitButton, false);
-    event.currentTarget.reset();
+    submittedForm.reset();
     setDefaultDates();
     resetLaunchFormState();
     syncLaunchFormByIndicator();
     renderAll();
-    setView("launches");
+    setView(isManagement() ? "duplicates" : "launches");
     const saveMessage = wasEditing
       ? "Resultado editado."
       : remotePersistenceActive()
