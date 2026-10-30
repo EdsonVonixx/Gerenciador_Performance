@@ -241,3 +241,10 @@ body .kpi-card h3{flex:1;min-width:0;overflow-wrap:anywhere}
 body .tv-sector-card .tv-sector-rank,body .tv-alert-row > strong{color:#fff!important;background:#123869!important;display:grid;place-items:center;flex-shrink:0;line-height:1;font-variant-numeric:tabular-nums}
 body .tv-alerts-card .eyebrow{color:var(--ink-2)!important}
 body .tv-updated-badge svg{color:inherit;stroke:currentColor}
+.duplicate-filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin:20px 0}
+.duplicate-group{padding:20px 0;border-top:1px solid var(--line)}
+.duplicate-group h3{margin:0;overflow-wrap:anywhere}
+.duplicate-group td{overflow-wrap:anywhere;max-width:320px}
+.duplicate-group button{margin:4px}
+@media(max-width:760px){.duplicate-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
