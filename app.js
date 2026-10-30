@@ -4491,6 +4491,7 @@ function getDuplicateLaunchWarning(launch) {
 }
 
 function renderLaunches() {
+  qs("#launchForm").classList.toggle("hidden", isManagement() && !editingLaunchId);
   const query = qs("#launchHistorySearch")?.value || "";
   const launches = getFilteredLaunches(currentDepartment()).filter((launch) => launchMatchesSearch(launch, query));
   const listElement = qs("#activityList");
@@ -4515,6 +4516,7 @@ function renderLaunches() {
             <div class="record-head-actions">
               <span class="pill neutral">${escapeHtml(launch.value)}</span>
               <button class="mini-action" data-launch-action="edit" data-launch-id="${escapeAttribute(launch.id)}" type="button">Editar</button>
+              ${isManagement() ? `<button class="mini-action" data-launch-action="delete" data-launch-id="${escapeAttribute(launch.id)}" type="button">Excluir</button>` : ""}
             </div>
           </header>
           <p class="action-history-description">${comment ? escapeHtml(comment) : "Sem observação registrada."}</p>
@@ -5586,6 +5588,7 @@ function startLaunchEdit(launchId) {
   }
 
   editingLaunchId = launchId;
+  qs("#launchForm").classList.remove("hidden");
   qs("#launchSubmitButton").textContent = "Atualizar resultado";
   qs("#launchCancelEdit").classList.remove("hidden");
   setView("launches");
@@ -8381,7 +8384,7 @@ function getDuplicateLaunchGroups() {
       if (!date || !isDateInsidePeriod(date, bounds.startDate, bounds.endDate)) continue;
       const indicator = getIndicatorByName(departmentKey, launch.indicator);
       const name = indicator?.name || launch.indicator;
-      const shift = normalizeDepartmentShift(launch.shift, departmentKey);
+      const shift = normalizeLaunchShift(launch.shift);
       const key = JSON.stringify([departmentKey, normalizeTextKey(name), launch.date, shift]);
       if (!groups.has(key)) groups.set(key, { departmentKey, name, date: launch.date, shift, editable: Boolean(indicator), launches: [] });
       groups.get(key).launches.push(launch);
@@ -8515,7 +8518,7 @@ function setView(view) {
   if (view === "analyses") view = "dashboard";
   if (!isManagement() && ["tv", "treatments", "duplicates"].includes(view)) return;
   if (view === "fiveS") return;
-  if (isManagement() && (view === "actions" || (view === "launches" && !editingLaunchId))) view = "dashboard";
+  if (isManagement() && view === "actions") view = "dashboard";
 
   const previousView = currentView;
   currentView = view;
@@ -8746,10 +8749,13 @@ function setupInteractions() {
 
   qs("#departmentSelect").addEventListener("change", (event) => {
     if (!isManagement()) return;
+    const destination = currentView === "launches" ? "launches" : "dashboard";
+    resetLaunchFormState();
+    qs("#launchForm").reset();
     selectedDepartmentKey = event.target.value;
     resetColumnFilters();
     renderAll();
-    setView("dashboard");
+    setView(destination);
     showToast(`Visualizando ${currentDepartment().label}.`);
   });
 
