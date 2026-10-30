@@ -76,6 +76,9 @@
             <span class="nav-icon action-icon" aria-hidden="true"></span>
             Tratativas e Plano de Ação
           </button>
+          <button class="nav-item management-only hidden" data-view="duplicates" type="button">
+            <span class="nav-icon" aria-hidden="true">≡</span> Duplicidades
+          </button>
           <button class="nav-item management-only hidden" data-view="tv" type="button">
             <span class="nav-icon tv-icon" aria-hidden="true"></span>
             Gestão a Vista
@@ -969,6 +972,18 @@
           </section>
         </section>
 
+        <section class="view" data-view-panel="duplicates">
+          <div class="panel">
+            <header><h2>Duplicidades de lançamentos</h2><strong id="duplicateCount"></strong></header>
+            <div class="duplicate-filters">
+              <label>Setor<select id="duplicateDepartment"><option value="">Todos</option></select></label>
+              <label>Indicador<input id="duplicateSearch" type="search" placeholder="Pesquisar indicador" /></label>
+              <label>Data<input id="duplicateDate" type="date" /></label>
+              <label>Turno<select id="duplicateShift"><option value="">Todos</option><option>Comercial</option><option>Turno A</option><option>Turno B</option><option>Turno C</option><option>Turno D</option></select></label>
+            </div>
+            <div id="duplicateResults" aria-live="polite"></div>
+          </div>
+        </section>
         <section class="view" data-view-panel="tv">
           <section class="tv-screen">
             <header class="tv-heading">
