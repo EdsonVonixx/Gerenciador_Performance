@@ -149,7 +149,7 @@ const departments = {
     label: "Estoque e Inventário",
     color: "#7352a3",
     indicators: [
-      { name: "Acuracidade de Estoque (Geral)", unit: "%", target: 97, goal: "higher", targetLabel: "Meta", frequency: "Diário", category: "Estratégico" },
+      { name: "Acuracidade de Estoque (Geral)", unit: "%", target: 95, goal: "higher", targetLabel: "Meta", frequency: "Diário", category: "Estratégico" },
       { name: "Cumprimento do Plano de Inventário", unit: "%", target: 100, goal: "higher", targetLabel: "Meta", frequency: "Mensal", category: "Tático/Operacional" },
       { name: "Divergência Contábil x WMS (SKU)", unit: "%", target: 3, goal: "lower", targetLabel: "Meta", frequency: "Diário", category: "Estratégico" },
       { name: "Índice de Divergências Tratadas", unit: "%", target: 98, goal: "higher", targetLabel: "Meta", frequency: "Semanal", category: "Tático/Operacional" },
