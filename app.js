@@ -136,11 +136,11 @@ const departments = {
     label: "Recebimento e Armazenagem",
     color: "#2f68a7",
     indicators: [
-      { name: "Capacidade de Recebimento Diário", unit: "%", target: 85, goal: "higher", targetLabel: "Meta" },
-      { name: "OTIF de Recebimento de Fornecedores x Follow Up", unit: "%", target: 95, goal: "higher", targetLabel: "Meta" },
-      { name: "Eficiência de Recebimento", unit: "%", target: 95, goal: "higher", targetLabel: "Meta" },
-      { name: "Tempo Médio de Recebimento", unit: "min", target: 50, goal: "lower", targetLabel: "Até" },
-      { name: "Erros de Armazenagem e Movimentação", unit: "%", target: 3, goal: "lower", targetLabel: "Meta" },
+      { name: "Capacidade de Recebimento Diário", unit: "%", target: 85, goal: "higher", targetLabel: "Meta", frequency: "Diário", category: "Estratégico" },
+      { name: "Aderência ao Follow-Up de Recebimento", unit: "%", target: 95, goal: "higher", targetLabel: "Meta", frequency: "Diário", category: "Estratégico" },
+      { name: "Eficiência de Recebimento", unit: "%", target: 95, goal: "higher", targetLabel: "Meta", frequency: "Diário", category: "Tático/Operacional" },
+      { name: "Tempo Médio de Recebimento", unit: "min", target: 50, goal: "lower", targetLabel: "Até", frequency: "Diário", category: "Tático/Operacional" },
+      { name: "Erros de Armazenagem e Movimentação", unit: "%", target: 3, goal: "lower", targetLabel: "Meta", frequency: "Diário", category: "Tático/Operacional" },
     ],
     launches: [],
     records: [],
@@ -963,6 +963,7 @@ function getIndicatorByName(departmentKey, indicatorName) {
   if (directMatch) return directMatch;
 
   const canonicalNameByAlias = {
+    recebimento: { "otif de recebimento de fornecedores x follow up": "Aderência ao Follow-Up de Recebimento" },
     estoque: {
       "acuracidade de estoque (sku)": "Acuracidade de Estoque (Geral)",
     },
@@ -2089,12 +2090,12 @@ function getCardDetails(indicator) {
     if (rows.length > 0) {
       return [
         ["Recebimentos", formatNumber(sumField(rows, "dailyReceipts"))],
-        ["Capacidade planejada", formatNumber(sumField(rows, "plannedReceiptCapacity"))],
+        ["Capacidade planejada de paletes", formatNumber(sumField(rows, "plannedReceiptCapacity"))],
       ];
     }
   }
 
-  if (indicatorKey.includes("otif") && indicatorKey.includes("recebimento")) {
+  if ((indicatorKey.includes("otif") || indicatorKey.includes("follow-up")) && indicatorKey.includes("recebimento")) {
     const rows = rowsWithFields(["onTimeSupplierDeliveries", "scheduledSupplierDeliveries"]);
     if (rows.length > 0) {
       return [
@@ -2132,7 +2133,7 @@ function getCardDetails(indicator) {
     const rows = rowsWithFields(["readdressedMaterials", "totalStoredMaterials"]);
     if (rows.length > 0) {
       return [
-        ["Materiais reendereçados", formatNumber(sumField(rows, "readdressedMaterials"))],
+        ["Materiais endereçados errados", formatNumber(sumField(rows, "readdressedMaterials"))],
         ["Materiais armazenados", formatNumber(sumField(rows, "totalStoredMaterials"))],
       ];
     }
@@ -2958,7 +2959,7 @@ function getLaunchFormulaType(indicatorName) {
     if (key.includes("capacidade") && key.includes("recebimento")) {
       return "recebimento_capacidade_diaria";
     }
-    if (key.includes("otif") && key.includes("recebimento")) {
+    if ((key.includes("otif") || key.includes("follow-up")) && key.includes("recebimento")) {
       return "recebimento_otif_fornecedores";
     }
     if (key.includes("eficiencia") && key.includes("recebimento")) {
@@ -3136,14 +3137,14 @@ launchFormulaDefinitions.giro_diario = {
 
 launchFormulaDefinitions.recebimento_capacidade_diaria = {
   title: "Cálculo de Capacidade de Recebimento Diário",
-  hint: "Capacidade (%) = (Recebimentos do dia / Capacidade planejada de recebimento) x 100.",
+  hint: "Capacidade (%) = (Recebimentos do dia / Capacidade planejada de paletes) x 100.",
   fields: ["dailyReceipts", "plannedReceiptCapacity"],
   allowNegative: false,
 };
 
 launchFormulaDefinitions.recebimento_otif_fornecedores = {
-  title: "Cálculo de OTIF de Recebimento de Fornecedores x Follow Up",
-  hint: "OTIF (%) = (Entregas recebidas no prazo / Entregas programadas) x 100.",
+  title: "Cálculo de Aderência ao Follow-Up de Recebimento",
+  hint: "Aderência (%) = (Entregas recebidas no prazo / Entregas programadas) x 100.",
   fields: ["onTimeSupplierDeliveries", "scheduledSupplierDeliveries"],
   allowNegative: false,
 };
@@ -3165,7 +3166,7 @@ launchFormulaDefinitions.recebimento_tempo_liberacao = {
 
 launchFormulaDefinitions.recebimento_erros_armazenagem = {
   title: "Cálculo de Erros de Armazenagem e Movimentação",
-  hint: "Erros (%) = (Materiais reendereçados sem planejamento / Total de materiais armazenados) x 100.",
+  hint: "Erros (%) = (Materiais endereçados errados / Total de materiais armazenados) x 100.",
   fields: ["readdressedMaterials", "totalStoredMaterials"],
   allowNegative: false,
 };
@@ -4753,7 +4754,7 @@ function applyRecebimentoLaunchFormulaDetails(indicator, formulaType, payload) {
     if (!Number.isFinite(payload.dailyReceipts) || !Number.isFinite(payload.plannedReceiptCapacity)) return;
     indicator.details = [
       ["Recebimentos", formatNumber(payload.dailyReceipts)],
-      ["Capacidade planejada", formatNumber(payload.plannedReceiptCapacity)],
+      ["Capacidade planejada de paletes", formatNumber(payload.plannedReceiptCapacity)],
     ];
   }
 
@@ -4784,7 +4785,7 @@ function applyRecebimentoLaunchFormulaDetails(indicator, formulaType, payload) {
   if (formulaType === "recebimento_erros_armazenagem") {
     if (!Number.isFinite(payload.readdressedMaterials) || !Number.isFinite(payload.totalStoredMaterials)) return;
     indicator.details = [
-      ["Materiais reendereçados", formatNumber(payload.readdressedMaterials)],
+      ["Materiais endereçados errados", formatNumber(payload.readdressedMaterials)],
       ["Materiais armazenados", formatNumber(payload.totalStoredMaterials)],
     ];
   }
@@ -6744,7 +6745,7 @@ const tvDashboardData = {
           status: "success",
         },
         {
-          name: "OTIF de Recebimento de Fornecedores x Follow Up",
+          name: "Aderência ao Follow-Up de Recebimento",
           accumulated: "113,4%",
           target: "95%",
           status: "success",
@@ -7884,14 +7885,14 @@ const launchReportFieldLabels = {
   totalItemsStock: "Itens em estoque",
   obsoleteItems: "Itens obsoletos",
   dailyReceipts: "Recebimentos do dia",
-  plannedReceiptCapacity: "Capacidade planejada",
+  plannedReceiptCapacity: "Capacidade planejada de paletes",
   onTimeSupplierDeliveries: "Entregas no prazo",
   scheduledSupplierDeliveries: "Entregas programadas",
   completedReceiptsOnTime: "Recebimentos no prazo",
   totalReceipts: "Total de recebimentos",
   releaseTotalHours: "Tempo total",
   releasedReceipts: "Recebimentos",
-  readdressedMaterials: "Materiais reendereçados",
+  readdressedMaterials: "Materiais endereçados errados",
   totalStoredMaterials: "Materiais armazenados",
   missingItems: "Itens em falta",
   criticalItems: "Itens críticos",
