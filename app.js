@@ -8373,20 +8373,20 @@ function exportManagementExcel() {
   showToast("Excel gerado.");
 }
 
-function getDuplicateLaunchGroups() {
+function getDuplicateLaunchGroups(scope = "all") {
   const groups = new Map();
   const allDates = operationalDepartmentKeys.flatMap(key => departments[key].launches.map(row => row.date));
   const bounds = getDateFilterBounds(allDates);
-  if (!bounds) return [];
+  if (scope === "period" && !bounds) return [];
   for (const departmentKey of operationalDepartmentKeys) {
     for (const launch of departments[departmentKey].launches) {
       const date = toDateOrNull(launch.date);
-      if (!date || !isDateInsidePeriod(date, bounds.startDate, bounds.endDate)) continue;
+      if (!date || (scope === "period" && !isDateInsidePeriod(date, bounds.startDate, bounds.endDate))) continue;
       const indicator = getIndicatorByName(departmentKey, launch.indicator);
       const name = indicator?.name || launch.indicator;
       const shift = normalizeLaunchShift(launch.shift);
-      const key = JSON.stringify([departmentKey, normalizeTextKey(name), launch.date, shift]);
-      if (!groups.has(key)) groups.set(key, { departmentKey, name, date: launch.date, shift, editable: Boolean(indicator), launches: [] });
+      const key = JSON.stringify([departmentKey, normalizeTextKey(name), launch.date]);
+      if (!groups.has(key)) groups.set(key, { departmentKey, name, date: launch.date, editable: Boolean(indicator), launches: [] });
       groups.get(key).launches.push(launch);
     }
   }
@@ -8402,22 +8402,22 @@ function renderDuplicateLaunches() {
   const search = normalizeTextKey(qs("#duplicateSearch").value);
   const date = qs("#duplicateDate").value;
   const shift = qs("#duplicateShift").value;
-  const groups = getDuplicateLaunchGroups().filter(group =>
+  const groups = getDuplicateLaunchGroups(qs("#duplicateScope").value).filter(group =>
     (!sector.value || group.departmentKey === sector.value) &&
     (!search || normalizeTextKey(group.name).includes(search)) &&
-    (!date || group.date === date) && (!shift || group.shift === shift));
+    (!date || group.date === date) && (!shift || group.launches.some(launch => normalizeLaunchShift(launch.shift) === shift)));
   qs("#duplicateCount").textContent = `${groups.length} grupos · ${groups.reduce((sum, group) => sum + group.launches.length, 0)} registros`;
   qs("#duplicateResults").innerHTML = groups.length ? groups.map(group => `
     <section class="duplicate-group">
       <h3>${escapeHtml(departments[group.departmentKey].label)} · ${escapeHtml(group.name)}</h3>
-      <p>${escapeHtml(formatDate(group.date))} · ${escapeHtml(group.shift)}</p>
-      <div class="table-wrap"><table><thead><tr><th>Registro</th><th>Resultado</th><th>Observação</th><th>Ações</th></tr></thead><tbody>
-      ${group.launches.map(launch => `<tr><td>${escapeHtml(String(launch.id))}</td><td>${escapeHtml(String(launch.value ?? launch.numericValue ?? ""))}</td><td>${escapeHtml(launch.comment || "—")}</td><td>
+      <p>${escapeHtml(formatDate(group.date))} · ${group.launches.length} registros no dia · ${new Set(group.launches.map(launch => normalizeLaunchShift(launch.shift))).size < group.launches.length ? "Repetição no mesmo turno" : "Turnos distintos"}</p>
+      <div class="table-wrap"><table><thead><tr><th>Registro</th><th>Turno</th><th>Resultado</th><th>Observação</th><th>Ações</th></tr></thead><tbody>
+      ${group.launches.map(launch => `<tr><td>${escapeHtml(String(launch.id))}</td><td>${escapeHtml(normalizeLaunchShift(launch.shift))}</td><td>${escapeHtml(String(launch.value ?? launch.numericValue ?? ""))}</td><td>${escapeHtml(launch.comment || "—")}</td><td>
         <button type="button" class="ghost-button" data-duplicate-edit="${escapeAttribute(launch.id)}" data-sector="${escapeAttribute(group.departmentKey)}" ${group.editable ? "" : 'disabled title="Indicador desativado"'}>Editar</button>
         <button type="button" class="ghost-button" data-duplicate-delete="${escapeAttribute(launch.id)}" data-sector="${escapeAttribute(group.departmentKey)}">Excluir</button>
       </td></tr>`).join("")}</tbody></table></div>
     </section>`).join("") : '<p>Nenhuma duplicidade encontrada para os filtros selecionados.</p>';
-  for (const id of ["duplicateDepartment", "duplicateSearch", "duplicateDate", "duplicateShift"]) qs(`#${id}`).oninput = renderDuplicateLaunches;
+  for (const id of ["duplicateScope", "duplicateDepartment", "duplicateSearch", "duplicateDate", "duplicateShift"]) qs(`#${id}`).oninput = renderDuplicateLaunches;
   qs("#duplicateResults").onclick = async event => {
     const button = event.target.closest("[data-duplicate-edit], [data-duplicate-delete]");
     if (!button || !isManagement()) return;
@@ -9124,4 +9124,3 @@ window.setInterval(() => {
 }, 30000);
 
 boot();
-
