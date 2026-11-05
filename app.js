@@ -1917,7 +1917,19 @@ function getIndicatorHistory(indicator, department = currentDepartment()) {
 }
 
 function getFilteredHistory(indicator, department = currentDepartment()) {
-  const history = getIndicatorHistory(indicator, department);
+  const departmentKey = operationalDepartmentKeys.find((key) => departments[key] === department);
+  // Use the same launch records and canonical names as the filling report.
+  const history = departmentKey && Array.isArray(department.launches)
+    ? department.launches
+      .filter((launch) => getIndicatorByName(departmentKey, launch.indicator)?.name === indicator.name)
+      .map((launch) => buildHistoryEntry(
+        launch.date,
+        getLaunchNumericValue(launch, null),
+        getLaunchFormulaTypeForDepartment(departmentKey, indicator.name),
+        launch.formulaData,
+        launch.id,
+      )).sort((left, right) => String(left.date).localeCompare(String(right.date)))
+    : getIndicatorHistory(indicator, department);
   const bounds = getDateFilterBounds(history.map((item) => item.date));
 
   if (!bounds) {
