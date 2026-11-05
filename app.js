@@ -1983,6 +1983,7 @@ function getStatus(indicator, department = currentDepartment(), valueOverride = 
   }
 
   if (indicator.goal === "higher") {
+    if (normalizeTextKey(indicator.name) === "capacidade de recebimento diario" && Number(currentValue) > 100) return "warn";
     if (currentValue >= indicator.target) return "success";
     if (currentValue >= indicator.target * 0.97) return "warn";
     return "danger";
