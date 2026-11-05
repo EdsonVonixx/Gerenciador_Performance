@@ -963,7 +963,7 @@ function getIndicatorByName(departmentKey, indicatorName) {
   if (directMatch) return directMatch;
 
   const canonicalNameByAlias = {
-    recebimento: { "otif de recebimento de fornecedores x follow up": "Aderência ao Follow-Up de Recebimento" },
+
     estoque: {
       "acuracidade de estoque (sku)": "Acuracidade de Estoque (Geral)",
     },
@@ -975,6 +975,7 @@ function getIndicatorByName(departmentKey, indicatorName) {
       "estoque slow mover (maior que 90 dias)": "Estoque Slow Mover (> 90 dias)",
     },
     recebimento: {
+      "otif de recebimento de fornecedores x follow up": "Aderência ao Follow-Up de Recebimento",
       "tempo medio de liberacao do material": "Tempo Médio de Recebimento",
     },
     secos: {
