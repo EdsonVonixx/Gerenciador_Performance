@@ -7319,8 +7319,8 @@ function getFillingIndicatorIdentity(departmentKey, indicatorName) {
   return normalizeTextKey(indicatorName);
 }
 
-function getTvFillingAnalysis() {
-  const { startDate, endDate } = getTvFillingBounds();
+function getTvFillingAnalysis(bounds = getTvFillingBounds()) {
+  const { startDate, endDate } = bounds;
   const today = toDateOrNull(getTodayInputDate());
   const effectiveEnd = endDate > today ? today : endDate;
 
@@ -8589,6 +8589,37 @@ function setDefaultDates() {
   }
 }
 
+function showSectorOverdueNotice() {
+  if (!currentUser || isManagement()) return;
+  const departmentKey = currentUser.departmentKey;
+  const department = departments[departmentKey];
+  if (!department) return;
+  const todayKey = getTodayInputDate();
+  const today = toDateOrNull(todayKey);
+  const monthStart = todayKey.slice(0, 7) + "-01";
+  const analysis = getTvFillingAnalysis({ startDate: toDateOrNull(monthStart), endDate: today });
+  const missing = analysis.departments.find((item) => item.departmentKey === departmentKey)?.missing || [];
+  const overdue = missing;
+  qs("#sectorOverdueNotice")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.id = "sectorOverdueNotice";
+  dialog.className = "filling-dialog";
+  dialog.setAttribute("aria-labelledby", "sectorOverdueTitle");
+  dialog.innerHTML = `
+    <header><div><h2 id="sectorOverdueTitle">Indicadores com registros pendentes</h2>
+    <p>${escapeHtml(department.label)} · ${overdue.length} pendências</p>
+    <p>De ${escapeHtml(formatDate(monthStart))} até ${escapeHtml(formatDate(todayKey))}</p></div>
+    <button type="button" data-close aria-label="Fechar">&times;</button></header>
+    <div class="filling-table"><table><thead><tr><th>Indicador</th><th>Data / período</th><th>Turno</th><th>Frequência</th></tr></thead>
+    <tbody>${overdue.length ? overdue.map((row) => `<tr><td>${escapeHtml(row.indicator)}</td><td>${escapeHtml(formatDate(row.date))}</td><td>${escapeHtml(row.shift)}</td><td>${escapeHtml(row.frequency)}</td></tr>`).join("") : '<tr><td colspan="4">Nenhum registro pendente no período.</td></tr>'}</tbody></table></div>
+    <button type="button" data-launch>Ir para lançamentos</button>`;
+  document.body.appendChild(dialog);
+  dialog.querySelector("[data-close]").onclick = () => dialog.close();
+  dialog.querySelector("[data-launch]").onclick = () => { dialog.close(); setView("launches"); };
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.showModal();
+}
+
 function setupLogin() {
   qs("#loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -8650,6 +8681,7 @@ function setupLogin() {
     setSidebarOpen(false);
     setView("dashboard");
     showToast(`Acesso liberado: ${profile.label}.`);
+    showSectorOverdueNotice();
   });
 }
 
