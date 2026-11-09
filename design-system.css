@@ -214,9 +214,6 @@ body .topbar .icon-button,body .topbar .ghost-button{color:#fff!important}
 :root[data-theme="dark"]{--chart-target:#f4bd4f}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--chart-target:#f4bd4f}}
 body #departmentSummary{display:none!important}
-body .kpi-card:first-child{color:var(--ink)!important;background:var(--glass-bg)!important;border:1px solid var(--glass-border)!important}
-body .kpi-card:first-child h3,body .kpi-card:first-child .kpi-value{color:var(--ink-2)!important;text-shadow:none!important}
-body .kpi-card:first-child .pill{color:var(--ink-2)!important;background:color-mix(in srgb,var(--navy2) 12%,var(--surface))!important}
 body .line-canvas{background:var(--chart-surface)!important;background-image:none!important}
 body .formula-title,body .formula-hint{color:var(--ink-2)!important;line-height:1.45}
 body .hamburger,body .hamburger::before,body .hamburger::after{background:#fff!important}
