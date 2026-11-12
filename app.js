@@ -2074,8 +2074,8 @@ function getCardDetails(indicator) {
   const history = getFilteredHistory(indicator);
   if (history.length && history.every(row => isOctoberSkuAccuracy({date:row.date}, indicator))) {
     return [
-      ["SKUs corretos", formatNumber(history.reduce((sum, row) => sum + Number(row.correctItems ?? row.dailyAccuracy ?? 0), 0))],
-      ["SKUs contados", formatNumber(history.reduce((sum, row) => sum + Number(row.totalCountedItems ?? row.inventoriedItems ?? row.countedSkusDay ?? 0), 0))],
+      ["SKUs corretos", formatIntegerDisplay(history.reduce((sum, row) => sum + Number(row.correctItems ?? row.dailyAccuracy ?? 0), 0))],
+      ["SKUs contados", formatIntegerDisplay(history.reduce((sum, row) => sum + Number(row.totalCountedItems ?? row.inventoriedItems ?? row.countedSkusDay ?? 0), 0))],
     ];
   }
   const indicatorKey = normalizeTextKey(indicator.name);
