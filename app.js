@@ -2803,7 +2803,25 @@ function getFilteredRecords(department = currentDepartment()) {
     });
 }
 
+function isOctoberSkuAccuracy(launch, indicator) {
+  return String(launch.date).startsWith("2026-10-") &&
+    ["Acuracidade de Estoque (Geral)", "Acuracidade de Estoque (Itens)", "Acuracidade de Estoque (SKU)"]
+      .includes(indicator?.name || launch.indicator);
+}
+
 function getLaunchNumericValue(launch, indicator = null) {
+  if (isOctoberSkuAccuracy(launch, indicator)) {
+    const payload = launch.formulaData || {};
+    const correct = payload.correctItems;
+    const counted = payload.totalCountedItems ?? payload.inventoriedItems ?? payload.countedSkusDay;
+    if (correct === null || correct === undefined || correct === "" ||
+        counted === null || counted === undefined || counted === "") return NaN;
+    const numerator = Number(correct);
+    const denominator = Number(counted);
+    return Number.isFinite(numerator) && Number.isFinite(denominator) &&
+      numerator >= 0 && denominator > 0 && numerator <= denominator
+      ? numerator / denominator * 100 : NaN;
+  }
   if (Number.isFinite(launch.numericValue)) return Number(launch.numericValue);
   const parsed = parseLocalizedNumber(launch.value);
   if (Number.isFinite(parsed)) return parsed;
