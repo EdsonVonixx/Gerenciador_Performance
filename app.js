@@ -963,7 +963,6 @@ function getIndicatorByName(departmentKey, indicatorName) {
   if (directMatch) return directMatch;
 
   const canonicalNameByAlias = {
-
     estoque: {
       "acuracidade de estoque (sku)": "Acuracidade de Estoque (Geral)",
     },
@@ -993,7 +992,7 @@ function encodeSupabaseFilterValue(value) {
 
 function launchToSupabaseRow(launch, departmentKey = selectedDepartmentKey) {
   const indicator = getIndicatorByName(departmentKey, launch.indicator);
-  const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator);
+  const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator, launch.date);
   const numericValue = getLaunchNumericValue(launch, indicator);
   const userId = vpcSupabaseSession?.user?.id || null;
 
@@ -1191,7 +1190,7 @@ function rebuildIndicatorsFromLaunches(departmentKey) {
       const numericValue = getLaunchNumericValue(launch, indicator);
       if (!Number.isFinite(numericValue)) return;
 
-      const formulaType = getLaunchFormulaType(launch.indicator);
+      const formulaType = getLaunchFormulaType(launch.indicator, launch.date);
       const historyEntry = buildHistoryEntry(launch.date, numericValue, formulaType, launch.formulaData, launch.id);
       indicator.value = numericValue;
       indicator.history = [...getIndicatorHistory(indicator, department), historyEntry];
@@ -1925,7 +1924,7 @@ function getFilteredHistory(indicator, department = currentDepartment()) {
       .map((launch) => buildHistoryEntry(
         launch.date,
         getLaunchNumericValue(launch, null),
-        getLaunchFormulaTypeForDepartment(departmentKey, indicator.name),
+        getLaunchFormulaTypeForDepartment(departmentKey, indicator.name, launch.date),
         launch.formulaData,
         launch.id,
       )).sort((left, right) => String(left.date).localeCompare(String(right.date)))
@@ -2330,8 +2329,8 @@ function getCardDetails(indicator) {
     const rows = rowsWithFields(["zeroStockMaintenanceItems", "stockableMaintenanceItems"]);
     if (rows.length > 0) {
       return [
-        ["Itens zerados", formatNumber(sumField(rows, "zeroStockMaintenanceItems"))],
-        ["Materiais estocáveis", formatNumber(sumField(rows, "stockableMaintenanceItems"))],
+        ["Itens de manutenção zerados", formatNumber(sumField(rows, "zeroStockMaintenanceItems"))],
+        ["Materiais estocáveis de manutenção", formatNumber(sumField(rows, "stockableMaintenanceItems"))],
       ];
     }
   }
@@ -2809,7 +2808,10 @@ function getFilteredRecords(department = currentDepartment()) {
     });
 }
 
-function getIndicatorDisplayName(indicator) {
+function getIndicatorDisplayName(indicator, date = null) {
+  if (indicator.name === "Ruptura de Materiais Estocáveis") return "Ruptura de Materiais Estocáveis (Manutenção)";
+  if (date) return isSkuAccuracyPeriod({ date }, indicator)
+    ? "Acuracidade de Estoque (SKUs)" : indicator.name;
   const bounds = getDateFilterBounds();
   const start = toDateOrNull("2026-10-01");
   const end = toDateOrNull("2027-01-01");
@@ -2827,6 +2829,16 @@ function isSkuAccuracyPeriod(launch, indicator) {
 }
 
 function getLaunchNumericValue(launch, indicator = null) {
+  if (isSkuDivergencePeriod(launch.date, indicator?.name || launch.indicator)) {
+    const payload = launch.formulaData || {};
+    const numerator = payload.divergentSkus;
+    const denominator = payload.totalSkus;
+    if (numerator === null || numerator === undefined || numerator === "" ||
+        denominator === null || denominator === undefined || denominator === "") return NaN;
+    return Number.isFinite(Number(numerator)) && Number.isFinite(Number(denominator)) &&
+      Number(numerator) >= 0 && Number(denominator) > 0 && Number(numerator) <= Number(denominator)
+      ? Number(numerator) / Number(denominator) * 100 : NaN;
+  }
   if (isSkuAccuracyPeriod(launch, indicator)) {
     const payload = launch.formulaData || {};
     const correct = payload.correctItems ?? payload.dailyAccuracy;
@@ -2881,7 +2893,7 @@ function migrateReceivingAverageLaunches() {
 
     department.launches = department.launches.map((launch) => {
       const indicator = getIndicatorByName(departmentKey, launch.indicator);
-      const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator);
+      const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator, launch.date);
       const recalculatedValue = calculateReceivingAverageMinutesFromPayload(formulaType, launch.formulaData);
       if (!Number.isFinite(recalculatedValue)) return launch;
 
@@ -3002,7 +3014,13 @@ function parseLocalizedNumber(rawValue) {
   return Number(normalized);
 }
 
-function getLaunchFormulaType(indicatorName) {
+function isSkuDivergencePeriod(date, indicatorName) {
+  return /^2026-(10|11|12)-\d{2}$/.test(String(date)) &&
+    normalizeTextKey(indicatorName || "").includes("divergencia contabil") &&
+    normalizeTextKey(indicatorName || "").includes("wms");
+}
+
+function getLaunchFormulaType(indicatorName, recordDate = null) {
   const key = normalizeTextKey(indicatorName);
   if (selectedDepartmentKey === "recebimento") {
     if (key.includes("capacidade") && key.includes("recebimento")) {
@@ -3034,7 +3052,8 @@ function getLaunchFormulaType(indicatorName) {
       return "estoque_acuracidade_sku";
     }
     if (key.includes("divergencia") && key.includes("contabil") && key.includes("wms")) {
-      return "estoque_divergencia_wms_valor";
+      return isSkuDivergencePeriod(recordDate, indicatorName)
+        ? "estoque_divergencia_wms_sku" : "estoque_divergencia_wms_valor";
     }
     if (key.includes("cumprimento") && key.includes("plano") && key.includes("inventario")) {
       return "estoque_cumprimento_plano_inventario";
@@ -3136,11 +3155,11 @@ function getLaunchFormulaType(indicatorName) {
   return null;
 }
 
-function getLaunchFormulaTypeForDepartment(departmentKey, indicatorName) {
+function getLaunchFormulaTypeForDepartment(departmentKey, indicatorName, recordDate = null) {
   const previousDepartmentKey = selectedDepartmentKey;
   selectedDepartmentKey = departmentKey;
   try {
-    return getLaunchFormulaType(indicatorName);
+    return getLaunchFormulaType(indicatorName, recordDate);
   } finally {
     selectedDepartmentKey = previousDepartmentKey;
   }
@@ -3229,8 +3248,8 @@ launchFormulaDefinitions.recebimento_produtividade_individual = {
 };
 
 launchFormulaDefinitions.ruptura_estocaveis = {
-  title: "Cálculo de Ruptura de Materiais Estocáveis",
-  hint: "Ruptura (%) = (Itens com estoque zerado / Total de materiais estocáveis) x 100.",
+  title: "Ruptura de Materiais Estocáveis de Manutenção",
+  hint: "Ruptura (%) = (Itens de manutenção com estoque zerado / Total de materiais estocáveis de manutenção) x 100. Considere exclusivamente materiais de manutenção nos dois campos.",
   fields: ["zeroStockMaintenanceItems", "stockableMaintenanceItems"],
   allowNegative: false,
 };
@@ -3638,7 +3657,8 @@ function computeLaunchFormulaValue(formulaType) {
   if (formulaType === "estoque_divergencia_wms_sku") {
     const divergentSkus = getLaunchFormulaFieldValue("divergentSkus");
     const totalSkus = getLaunchFormulaFieldValue("totalSkus");
-    if (!Number.isFinite(divergentSkus) || !Number.isFinite(totalSkus) || totalSkus <= 0) return NaN;
+    if (!Number.isInteger(divergentSkus) || !Number.isInteger(totalSkus) || totalSkus <= 0 ||
+        divergentSkus < 0 || divergentSkus > totalSkus) return NaN;
     return (divergentSkus / totalSkus) * 100;
   }
 
@@ -3881,7 +3901,11 @@ function isSkuAccuracyForm() {
 
 function updateLaunchResultFromFormula() {
   const indicatorName = qs("#launchIndicator")?.value || "";
-  const formulaType = getLaunchFormulaType(indicatorName);
+  const recordDate = qs('#launchForm [name="date"]')?.value;
+  qs("#launchIndicator")?.querySelectorAll("option").forEach(option => {
+    option.textContent = getIndicatorDisplayName({ name: option.value }, recordDate);
+  });
+  const formulaType = getLaunchFormulaType(indicatorName, recordDate);
   const valueInput = qs('#launchForm [name="value"]');
   const hintElement = qs("#launchFormulaHint");
   if (!valueInput || !hintElement) return;
@@ -3903,6 +3927,7 @@ function updateLaunchResultFromFormula() {
     input.parentElement.firstChild.textContent = skuPeriod ? "SKUs corretos " : "Acuracidade média diária do Kaizen (%) ";
     if (skuPeriod) input.removeAttribute("max"); else input.max = "100";
     input.step = skuPeriod ? "1" : "any";
+    input.placeholder = skuPeriod ? "Ex.: 49" : "Ex.: 97,5";
   }
   const computedValue = computeLaunchFormulaValue(formulaType);
   const resultSuffix = definition.resultSuffix || "%";
@@ -3932,7 +3957,7 @@ function updateLaunchResultFromFormula() {
 
 function syncLaunchFormByIndicator() {
   const indicatorName = qs("#launchIndicator")?.value || "";
-  const formulaType = getLaunchFormulaType(indicatorName);
+  const formulaType = getLaunchFormulaType(indicatorName, qs('#launchForm [name="date"]')?.value);
   const definition = formulaType ? launchFormulaDefinitions[formulaType] : null;
   const formulaFields = qs("#launchFormulaFields");
   const titleElement = qs("#launchFormulaTitle");
@@ -4052,6 +4077,12 @@ function syncLaunchFormByIndicator() {
   valueInput.placeholder = "Calculado automaticamente";
   valueInput.step = "0.01";
   valueInput.min = definition.allowNegative ? "-9999999" : "0";
+  if (formulaType === "ruptura_estocaveis") {
+    qs('#launchFormulaFields [name="zeroStockMaintenanceItems"]').parentElement.firstChild.textContent = "Itens de manutenção com estoque zerado ";
+    qs('#launchFormulaFields [name="stockableMaintenanceItems"]').parentElement.firstChild.textContent = "Total de materiais estocáveis de manutenção ";
+  } else if (formulaType === "aderencia_estoque_minimo") {
+    qs('#launchFormulaFields [name="stockableMaintenanceItems"]').parentElement.firstChild.textContent = "Total de itens estocáveis de manutenção ";
+  }
   updateLaunchResultFromFormula();
 }
 
@@ -4142,14 +4173,14 @@ function renderIndicatorOptions() {
   const currentLaunchIndicator = launchSelect?.value || "";
   const currentActionIndicator = actionSelect?.value || "";
   const launchOptions = departmentIndicatorNames
-    .map((name) => `<option>${escapeHtml(name)}</option>`)
+    .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(getIndicatorDisplayName({ name }))}</option>`)
     .join("");
   const actionIndicatorNames =
     actionExtraIndicatorDepartments.has(selectedDepartmentKey)
       ? [...departmentIndicatorNames, actionExtraIndicatorName]
       : departmentIndicatorNames;
   const actionOptions = uniqueIndicatorNames(actionIndicatorNames)
-    .map((name) => `<option>${escapeHtml(name)}</option>`)
+    .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(getIndicatorDisplayName({ name }))}</option>`)
     .join("");
 
   if (launchSelect) {
@@ -4765,8 +4796,8 @@ function applyAlmoxarifadoLaunchFormulaDetails(indicator, formulaType, payload) 
   if (formulaType === "ruptura_estocaveis") {
     if (!Number.isFinite(payload.zeroStockMaintenanceItems) || !Number.isFinite(payload.stockableMaintenanceItems)) return;
     indicator.details = [
-      ["Itens zerados", formatNumber(payload.zeroStockMaintenanceItems)],
-      ["Materiais estocáveis", formatNumber(payload.stockableMaintenanceItems)],
+      ["Itens de manutenção zerados", formatNumber(payload.zeroStockMaintenanceItems)],
+      ["Materiais estocáveis de manutenção", formatNumber(payload.stockableMaintenanceItems)],
     ];
   }
 
@@ -5640,13 +5671,14 @@ function startLaunchEdit(launchId) {
   const launchForm = qs("#launchForm");
   launchForm.reset();
   launchForm.elements.indicator.value = getIndicatorByName(selectedDepartmentKey, launch.indicator)?.name || launch.indicator;
+  launchForm.elements.date.value = launch.date;
   syncLaunchFormByIndicator();
   syncLaunchShiftOptions();
   launchForm.elements.date.value = launch.date;
   launchForm.elements.shift.value = normalizeDepartmentShift(launch.shift);
   launchForm.elements.comment.value = launch.comment || "";
 
-  const formulaType = getLaunchFormulaType(launch.indicator);
+  const formulaType = getLaunchFormulaType(launch.indicator, launch.date);
   if (formulaType && launch.formulaData) {
     Object.entries(launch.formulaData).forEach(([key, fieldValue]) => {
       const input = qs(`#launchForm [name="${key}"]`);
@@ -7967,8 +7999,8 @@ const launchReportFieldLabels = {
   totalStoredMaterials: "Materiais armazenados",
   missingItems: "Itens em falta",
   criticalItems: "Itens críticos",
-  zeroStockMaintenanceItems: "Itens com estoque zerado",
-  stockableMaintenanceItems: "Materiais estocáveis",
+  zeroStockMaintenanceItems: "Itens de manutenção com estoque zerado",
+  stockableMaintenanceItems: "Materiais estocáveis de manutenção",
   itemsAboveMinimum: "Itens acima do mínimo",
   countedSkusPeriod: "SKUs contados",
   replenishmentSkus: "SKUs de reposição",
@@ -8039,7 +8071,7 @@ function formatLaunchReportInputValue(field, value) {
 }
 
 function getManagementLaunchInputEntries(launch, departmentKey, numericValue) {
-  const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator);
+  const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator, launch.date);
   const definition = formulaType ? launchFormulaDefinitions[formulaType] : null;
   const payload = launch.formulaData && typeof launch.formulaData === "object" ? launch.formulaData : {};
   if (isSkuAccuracyPeriod(launch)) {
@@ -8877,7 +8909,7 @@ function setupInteractions() {
   qsa("#launchFormulaFields input").forEach((input) => {
     input.addEventListener("input", () => updateLaunchResultFromFormula());
   });
-  qs('#launchForm [name="date"]').addEventListener("change", updateLaunchResultFromFormula);
+  qs('#launchForm [name="date"]').addEventListener("change", syncLaunchFormByIndicator);
 
   qs("#launchCancelEdit").addEventListener("click", () => {
     qs("#launchForm").reset();
@@ -8922,7 +8954,7 @@ function setupInteractions() {
     const data = new FormData(submittedForm);
     const indicator = currentDepartment().indicators.find((item) => item.name === data.get("indicator"));
     const value = parseLocalizedNumber(data.get("value"));
-    const formulaType = getLaunchFormulaType(String(data.get("indicator")));
+    const formulaType = getLaunchFormulaType(String(data.get("indicator")), String(data.get("date")));
     const formulaPayload = extractFormulaPayload(data, formulaType);
     const wasEditing = Boolean(editingLaunchId);
     const existingLaunch = wasEditing
@@ -9236,3 +9268,4 @@ window.setInterval(() => {
 }, 30000);
 
 boot();
+
