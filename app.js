@@ -2072,7 +2072,7 @@ function formatShortDate(dateValue) {
 
 function getCardDetails(indicator) {
   const history = getFilteredHistory(indicator);
-  if (history.length && history.every(row => isOctoberSkuAccuracy({date:row.date}, indicator))) {
+  if (history.length && history.every(row => isSkuAccuracyPeriod({date:row.date}, indicator))) {
     return [
       ["SKUs corretos", formatIntegerDisplay(history.reduce((sum, row) => sum + Number(row.correctItems ?? row.dailyAccuracy ?? 0), 0))],
       ["SKUs contados", formatIntegerDisplay(history.reduce((sum, row) => sum + Number(row.totalCountedItems ?? row.inventoriedItems ?? row.countedSkusDay ?? 0), 0))],
@@ -2809,14 +2809,14 @@ function getFilteredRecords(department = currentDepartment()) {
     });
 }
 
-function isOctoberSkuAccuracy(launch, indicator) {
-  return String(launch.date).startsWith("2026-10-") &&
+function isSkuAccuracyPeriod(launch, indicator) {
+  return /^2026-(10|11|12)-\d{2}$/.test(String(launch.date)) &&
     ["Acuracidade de Estoque (Geral)", "Acuracidade de Estoque (Itens)", "Acuracidade de Estoque (SKU)"]
       .includes(indicator?.name || launch.indicator);
 }
 
 function getLaunchNumericValue(launch, indicator = null) {
-  if (isOctoberSkuAccuracy(launch, indicator)) {
+  if (isSkuAccuracyPeriod(launch, indicator)) {
     const payload = launch.formulaData || {};
     const correct = payload.correctItems ?? payload.dailyAccuracy;
     const counted = payload.totalCountedItems ?? payload.inventoriedItems ?? payload.countedSkusDay;
@@ -3607,7 +3607,7 @@ function computeLaunchFormulaValue(formulaType) {
   if (formulaType === "acuracidade_uso_consumo") {
     const dailyAccuracy = getLaunchFormulaFieldValue("dailyAccuracy");
     const countedSkusDay = getLaunchFormulaFieldValue("countedSkusDay");
-    if (isOctoberAccuracyForm()) {
+    if (isSkuAccuracyForm()) {
       return Number.isInteger(dailyAccuracy) && Number.isInteger(countedSkusDay) &&
         dailyAccuracy >= 0 && countedSkusDay > 0 && dailyAccuracy <= countedSkusDay
         ? dailyAccuracy / countedSkusDay * 100 : NaN;
@@ -3863,9 +3863,9 @@ function computeLaunchFormulaValue(formulaType) {
   return NaN;
 }
 
-function isOctoberAccuracyForm() {
+function isSkuAccuracyForm() {
   return ["almoxarifado", "estoque"].includes(selectedDepartmentKey) &&
-    isOctoberSkuAccuracy({ date: qs('#launchForm [name="date"]')?.value, indicator: qs("#launchIndicator")?.value });
+    isSkuAccuracyPeriod({ date: qs('#launchForm [name="date"]')?.value, indicator: qs("#launchIndicator")?.value });
 }
 
 function updateLaunchResultFromFormula() {
@@ -3880,18 +3880,18 @@ function updateLaunchResultFromFormula() {
     return;
   }
 
-  const october = formulaType === "acuracidade_uso_consumo" && isOctoberAccuracyForm();
-  const definition = october ? {
+  const skuPeriod = formulaType === "acuracidade_uso_consumo" && isSkuAccuracyForm();
+  const definition = skuPeriod ? {
     ...launchFormulaDefinitions[formulaType],
-    title: "Acuracidade por SKUs - Outubro/2026",
+    title: "Acuracidade por SKUs - Outubro a Dezembro/2026",
     hint: "Acuracidade (%) = (SKUs corretos / SKUs contados) x 100.",
   } : launchFormulaDefinitions[formulaType];
   if (formulaType === "acuracidade_uso_consumo") {
     qs("#launchFormulaTitle").textContent = definition.title;
     const input = qs('#launchForm [name="dailyAccuracy"]');
-    input.parentElement.firstChild.textContent = october ? "SKUs corretos " : "Acuracidade média diária do Kaizen (%) ";
-    if (october) input.removeAttribute("max"); else input.max = "100";
-    input.step = october ? "1" : "any";
+    input.parentElement.firstChild.textContent = skuPeriod ? "SKUs corretos " : "Acuracidade média diária do Kaizen (%) ";
+    if (skuPeriod) input.removeAttribute("max"); else input.max = "100";
+    input.step = skuPeriod ? "1" : "any";
   }
   const computedValue = computeLaunchFormulaValue(formulaType);
   const resultSuffix = definition.resultSuffix || "%";
@@ -4575,7 +4575,7 @@ function renderLaunches() {
           <header class="action-history-header">
             <strong>${escapeHtml(launch.indicator)}</strong>
             <div class="record-head-actions">
-              <span class="pill neutral">${escapeHtml(launch.value)}</span>
+              <span class="pill neutral">${isSkuAccuracyPeriod(launch) ? (Number.isFinite(getLaunchNumericValue(launch)) ? formatNumber(getLaunchNumericValue(launch)) + "%" : "Sem dados") : escapeHtml(launch.value)}</span>
               <button class="mini-action" data-launch-action="edit" data-launch-id="${escapeAttribute(launch.id)}" type="button">Editar</button>
               ${isManagement() ? `<button class="mini-action" data-launch-action="delete" data-launch-id="${escapeAttribute(launch.id)}" type="button">Excluir</button>` : ""}
             </div>
@@ -8031,7 +8031,7 @@ function getManagementLaunchInputEntries(launch, departmentKey, numericValue) {
   const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator);
   const definition = formulaType ? launchFormulaDefinitions[formulaType] : null;
   const payload = launch.formulaData && typeof launch.formulaData === "object" ? launch.formulaData : {};
-  if (isOctoberSkuAccuracy(launch)) {
+  if (isSkuAccuracyPeriod(launch)) {
     return [
       { field: "correctItems", label: "SKUs corretos", value: payload.correctItems ?? payload.dailyAccuracy },
       { field: "totalCountedItems", label: "SKUs contados", value: payload.totalCountedItems ?? payload.inventoriedItems ?? payload.countedSkusDay },
