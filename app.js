@@ -124,7 +124,7 @@ const departments = {
     color: "#1d6b57",
     indicators: [
       { name: "Ruptura de Materiais Estocáveis", unit: "%", target: 5, goal: "lower", targetLabel: "Meta", frequency: "Diário" },
-      { name: "Acuracidade de Estoque (Itens)", unit: "%", target: 97, goal: "higher", targetLabel: "Meta", frequency: "Diário" },
+      { name: "Acuracidade de Estoque (Itens)", unit: "%", target: 95, goal: "higher", targetLabel: "Meta", frequency: "Diário" },
       { name: "Aderência ao Estoque Mínimo", unit: "%", target: 95, goal: "higher", targetLabel: "Meta", frequency: "Diário" },
       { name: "Cumprimento do Plano de Inventário", unit: "%", target: 100, goal: "higher", targetLabel: "Meta", frequency: "Mensal" },
       { name: "Estoque Slow Mover (> 90 dias)", unit: "%", target: 10, goal: "lower", targetLabel: "Meta", frequency: "Semanal" },
@@ -6811,7 +6811,7 @@ const tvDashboardData = {
         {
           name: "Acuracidade de Estoque (Itens)",
           accumulated: "100%",
-          target: "97%",
+          target: "95%",
           status: "success",
         },
         {
