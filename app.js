@@ -2809,6 +2809,17 @@ function getFilteredRecords(department = currentDepartment()) {
     });
 }
 
+function getIndicatorDisplayName(indicator) {
+  const bounds = getDateFilterBounds();
+  const start = toDateOrNull("2026-10-01");
+  const end = toDateOrNull("2027-01-01");
+  if (bounds && bounds.startDate >= start && bounds.endDate < end &&
+      isSkuAccuracyPeriod({ date: "2026-10-01" }, indicator)) {
+    return "Acuracidade de Estoque (SKUs)";
+  }
+  return indicator.name;
+}
+
 function isSkuAccuracyPeriod(launch, indicator) {
   return /^2026-(10|11|12)-\d{2}$/.test(String(launch.date)) &&
     ["Acuracidade de Estoque (Geral)", "Acuracidade de Estoque (Itens)", "Acuracidade de Estoque (SKU)"]
@@ -4211,7 +4222,7 @@ function renderKpis() {
       return `
         <article class="kpi-card">
           <header>
-            <h3>${escapeHtml(indicator.name)}</h3>
+            <h3>${escapeHtml(getIndicatorDisplayName(indicator))}</h3>
             <span class="pill ${status}">${escapeHtml(indicatorStatusLabel(indicator, department))}</span>
           </header>
           <strong class="kpi-value">${formatMetric(indicator, cardValue)}</strong>
@@ -4451,7 +4462,7 @@ function renderLineCharts() {
       return `
         <article class="line-card">
           <header>
-            <h3>${escapeHtml(indicator.name)}</h3>
+            <h3>${escapeHtml(getIndicatorDisplayName(indicator))}</h3>
             <span class="pill ${getStatus(indicator, department, accumulatedValue)}">${escapeHtml(indicatorStatusLabel(
         indicator,
         department,
@@ -7133,7 +7144,7 @@ function renderTvIndicatorRow(indicator) {
   return `
     <article class="tv-indicator-row ${indicator.status}">
       <div class="tv-indicator-name">
-        <strong>${escapeHtml(indicator.name)}</strong>
+        <strong>${escapeHtml(getIndicatorDisplayName(indicator))}</strong>
       </div>
       <div class="tv-indicator-values">
         <span>
