@@ -8196,6 +8196,18 @@ function getManagementLaunchReportRows() {
   return rows;
 }
 
+function isManagementReportStrategic(row) {
+  const indicator = getIndicatorByName(row.departmentKey, row.indicator);
+  if (normalizeTextKey(indicator?.category).includes("estrategico")) return true;
+  return row.departmentKey === "almoxarifado" &&
+    ["Ruptura de Materiais Estocáveis", "Acuracidade de Estoque (Itens)"].includes(indicator?.name);
+}
+
+function getManagementReportIndicatorLabel(row) {
+  const indicator = getIndicatorByName(row.departmentKey, row.indicator);
+  return getIndicatorDisplayName(indicator || { name: row.indicator });
+}
+
 function renderManagementLaunchTable(rows) {
   if (!rows.length) {
     return renderExportTable(["Indicador", "Data", "Turno", "Valores de entrada", "Resultado"], []);
@@ -8214,12 +8226,13 @@ function renderManagementLaunchTable(rows) {
   return `<div class="launch-report-sections">${sections.map((section) => `
     <section class="launch-department-section sector-${section.tone}">
       <table class="launch-report-table">
+        <colgroup><col style="width:27%"><col style="width:11%"><col style="width:11%"><col style="width:38%"><col style="width:13%"></colgroup>
         <thead>
           <tr class="department-title"><th colspan="5">${escapeHtml(section.department.label)}</th></tr>
           <tr><th>Indicador</th><th>Data</th><th>Turno</th><th>Valores de entrada</th><th>Resultado</th></tr>
         </thead>
-        <tbody>${section.rows.map((row) => `<tr class="${row.type === "summary" ? "monthly-result" : ""}">
-          <td>${escapeHtml(row.indicator)}</td><td>${escapeHtml(row.date)}</td><td>${escapeHtml(row.shift)}</td>
+        <tbody>${section.rows.map((row, index) => `<tr class="${row.type === "summary" ? "monthly-result" : ""} ${isManagementReportStrategic(row) ? "strategic-row" : ""} ${index > 0 && section.rows[index - 1].indicator !== row.indicator ? "indicator-start" : ""}">
+          <td>${isManagementReportStrategic(row) ? '<b class="strategic-badge">Estratégico</b>' : ""}${escapeHtml(getManagementReportIndicatorLabel(row))}</td><td>${escapeHtml(row.date)}</td><td>${escapeHtml(row.shift)}</td>
           <td>${renderInputs(row.inputs)}</td><td><strong>${escapeHtml(row.result)}</strong></td>
         </tr>`).join("")}</tbody>
       </table>
@@ -8264,8 +8277,9 @@ function renderManagementMonthlyKanban(rows) {
     <section class="kanban-sector sector-${(index % 5) + 1}">
       <h3>${escapeHtml(department)}</h3>
       <div class="kanban-indicators">${departmentRows.map((row) => `
-        <article class="kanban-indicator status-${escapeHtml(row.status || "tracking")}">
-          <span>${escapeHtml(row.indicator)}</span>
+        <article class="kanban-indicator status-${escapeHtml(row.status || "tracking")} ${isManagementReportStrategic(row) ? "is-strategic" : ""}">
+          ${isManagementReportStrategic(row) ? '<b class="strategic-badge">Estratégico</b>' : ""}
+          <span>${escapeHtml(getManagementReportIndicatorLabel(row))}</span>
           <strong>${escapeHtml(row.result)}</strong>
           <small>${escapeHtml(row.date)} | Meta ${escapeHtml(row.target)}</small>
         </article>
@@ -8424,13 +8438,48 @@ function buildManagementExportHtml(data) {
           .launch-report-table .monthly-result td { color: #083b35; background: #d9f3ed !important; border-top: 2px solid #16a085; font-weight: 700; }
           @media print {
             @page { size: landscape; margin: 10mm; }
-            body { margin: 14mm; }
+            body { margin: 0; }
             .report-header { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
             .summary-card, .executive-summary-card, .kanban-sector, .kanban-sector h3, .kanban-indicator, th, .launch-report-table .monthly-result td { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
             h2 { break-after: avoid; }
             table { break-inside: auto; }
             tr { break-inside: avoid; }
             .executive-summary-card, .kanban-sector, .kanban-indicator { break-inside: avoid; }
+          }
+          body { line-height: 1.5; }
+          h2 { margin-top: 32px; margin-bottom: 16px; }
+          .summary-grid, .executive-summary-list { gap: 14px; }
+          .summary-card { padding: 16px; }
+          .executive-summary-card { padding: 16px 18px; gap: 7px; }
+          .monthly-kanban { display: block; }
+          .kanban-sector { --sector: #17649b; margin-bottom: 24px; border: 1px solid #c5d6e4; border-top: 5px solid var(--sector); background: #f3f7fb; }
+          .sector-2 { --sector: #087f70; }
+          .sector-3 { --sector: #9b650b; }
+          .sector-4 { --sector: #67529c; }
+          .sector-5 { --sector: #a13953; }
+          .kanban-sector h3 { background: var(--sector); padding: 10px 16px; min-height: 0; font-size: 14px; }
+          .kanban-indicators { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 10px; }
+          .kanban-indicator { padding: 9px 12px; gap: 4px; border: 1px solid #d7e1eb; border-left-width: 5px; }
+          .kanban-indicator span { min-height: 0; font-size: 11px; line-height: 1.45; }
+          .kanban-indicator strong { font-size: 18px; }
+          .kanban-indicator small { font-size: 10px; color: #42566b; }
+          .strategic-badge { display: block; width: fit-content; margin-bottom: 6px; padding: 3px 7px; color: #684600; background: #ffe5a0; border: 1px solid #b78321; font-size: 9px; text-transform: uppercase; }
+          .kanban-indicator.is-strategic { background: #fffaf0; }
+          .launch-report-sections { display: block; }
+          .launch-department-section { margin: 30px 0; border-top-color: var(--sector, #17649b); }
+          .launch-report-table { table-layout: fixed; font-size: 10px; line-height: 1.5; }
+          th, td { padding: 11px 12px; overflow-wrap: anywhere; }
+          .launch-report-table .department-title th { padding: 16px; background: var(--sector, #17649b); font-size: 16px; }
+          .launch-input-list { display: grid; gap: 6px; }
+          .launch-input-list span { white-space: normal; }
+          .launch-report-table .strategic-row td:first-child { background: #fff8e6; border-left: 3px solid #b78321; }
+          .launch-report-table .indicator-start td { border-top: 7px solid #dde6ef; }
+          .launch-report-table .monthly-result td { padding-top: 14px; padding-bottom: 14px; }
+          @media print {
+            @page { size: A4 landscape; margin: 13mm; }
+            .launch-department-section { break-before: page; margin: 0 0 24px; }
+            .monthly-kanban { gap: 16px; }
+            .strategic-badge, .strategic-row td, .is-strategic { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
           }
         </style>
       </head>
