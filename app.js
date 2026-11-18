@@ -162,8 +162,8 @@ const departments = {
     label: "Operação Secos e Expedição",
     color: "#b87818",
     indicators: [
-      { name: "Índice de Perdas por Ajuste nos Picks Secos", unit: "%", target: 0.05, goal: "lower", targetLabel: "Meta" },
-      { name: "Índice de OPs Atendidas Erradas", unit: "%", target: 0.3, goal: "lower", targetLabel: "Meta" },
+      { name: "Índice de Perdas por Ajuste nos Picks Secos", unit: "%", target: 0.05, goal: "lower", targetLabel: "Meta", category: "Estratégico" },
+      { name: "Índice de OPs Atendidas Erradas", unit: "%", target: 0.3, goal: "lower", targetLabel: "Meta", category: "Estratégico" },
       { name: "Índice de Erros de Movimentação", unit: "%", target: 0.5, goal: "lower", targetLabel: "Meta" },
       { name: "Erros Expedição Fábrica (Produto Acabado)", unit: "R$", target: 0, goal: "lower", targetLabel: "Meta" },
       { name: "Tempo Médio Carregamento Carretas", unit: "min", target: 80, goal: "lower", targetLabel: "Meta" },
@@ -175,8 +175,8 @@ const departments = {
     label: "Separação Química",
     color: "#c8452d",
     indicators: [
-      { name: "Confiabilidade do Abastecimento da Produção", unit: "%", target: 90, goal: "higher", targetLabel: "Meta" },
-      { name: "Eficiência no Atendimento das OPs", unit: "%", target: 90, goal: "higher", targetLabel: "Meta" },
+      { name: "Confiabilidade do Abastecimento da Produção", unit: "%", target: 90, goal: "higher", targetLabel: "Meta", category: "Estratégico" },
+      { name: "Eficiência no Atendimento das OPs", unit: "%", target: 90, goal: "higher", targetLabel: "Meta", category: "Estratégico" },
       { name: "Índice de Retrabalho de Separação", unit: "%", target: 0.1, goal: "lower", targetLabel: "Meta" },
       { name: "Taxa de Giro do Kanban", unit: "%", target: 3, goal: "lower", targetLabel: "Meta" },
       { name: "Produtividade de OPs Separadas", unit: "%", target: 100, goal: "higher", targetLabel: "Meta" },
