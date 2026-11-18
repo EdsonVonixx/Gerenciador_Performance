@@ -2809,6 +2809,7 @@ function getFilteredRecords(department = currentDepartment()) {
 }
 
 function getIndicatorDisplayName(indicator, date = null) {
+  if (normalizeTextKey(indicator.name).includes("divergencia contabil") && normalizeTextKey(indicator.name).includes("wms")) return "Divergência Contábil x WMS (R$)";
   if (indicator.name === "Ruptura de Materiais Estocáveis") return "Ruptura de Materiais Estocáveis (Manutenção)";
   if (date) return isSkuAccuracyPeriod({ date }, indicator)
     ? "Acuracidade de Estoque (SKUs)" : indicator.name;
@@ -2830,10 +2831,10 @@ function isSkuAccuracyPeriod(launch, indicator) {
 
 function getLaunchNumericValue(launch, indicator = null) {
   if (isSkuDivergencePeriod(launch.date, indicator?.name || launch.indicator) &&
-      (launch.formulaData?.divergentSkus !== undefined || launch.formulaData?.totalSkus !== undefined)) {
+      (launch.formulaData?.divergenceValue !== undefined || launch.formulaData?.stockValue !== undefined)) {
     const payload = launch.formulaData || {};
-    const numerator = payload.divergentSkus;
-    const denominator = payload.totalSkus;
+    const numerator = payload.divergenceValue;
+    const denominator = payload.stockValue;
     if (numerator === null || numerator === undefined || numerator === "" ||
         denominator === null || denominator === undefined || denominator === "") return NaN;
     return Number.isFinite(Number(numerator)) && Number.isFinite(Number(denominator)) &&
@@ -3055,8 +3056,7 @@ function getLaunchFormulaType(indicatorName, recordDate = null, payload = null) 
     if (key.includes("divergencia") && key.includes("contabil") && key.includes("wms")) {
       if (payload?.divergentSkus !== undefined || payload?.totalSkus !== undefined) return "estoque_divergencia_wms_sku";
       if (payload?.divergenceValue !== undefined || payload?.stockValue !== undefined) return "estoque_divergencia_wms_valor";
-      return isSkuDivergencePeriod(recordDate, indicatorName)
-        ? "estoque_divergencia_wms_sku" : "estoque_divergencia_wms_valor";
+      return "estoque_divergencia_wms_valor";
     }
     if (key.includes("cumprimento") && key.includes("plano") && key.includes("inventario")) {
       return "estoque_cumprimento_plano_inventario";
