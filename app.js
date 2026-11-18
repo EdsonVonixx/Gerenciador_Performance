@@ -992,7 +992,7 @@ function encodeSupabaseFilterValue(value) {
 
 function launchToSupabaseRow(launch, departmentKey = selectedDepartmentKey) {
   const indicator = getIndicatorByName(departmentKey, launch.indicator);
-  const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator, launch.date);
+  const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator, launch.date, launch.formulaData);
   const numericValue = getLaunchNumericValue(launch, indicator);
   const userId = vpcSupabaseSession?.user?.id || null;
 
@@ -1190,7 +1190,7 @@ function rebuildIndicatorsFromLaunches(departmentKey) {
       const numericValue = getLaunchNumericValue(launch, indicator);
       if (!Number.isFinite(numericValue)) return;
 
-      const formulaType = getLaunchFormulaType(launch.indicator, launch.date);
+      const formulaType = getLaunchFormulaType(launch.indicator, launch.date, launch.formulaData);
       const historyEntry = buildHistoryEntry(launch.date, numericValue, formulaType, launch.formulaData, launch.id);
       indicator.value = numericValue;
       indicator.history = [...getIndicatorHistory(indicator, department), historyEntry];
@@ -1924,7 +1924,7 @@ function getFilteredHistory(indicator, department = currentDepartment()) {
       .map((launch) => buildHistoryEntry(
         launch.date,
         getLaunchNumericValue(launch, null),
-        getLaunchFormulaTypeForDepartment(departmentKey, indicator.name, launch.date),
+        getLaunchFormulaTypeForDepartment(departmentKey, indicator.name, launch.date, launch.formulaData),
         launch.formulaData,
         launch.id,
       )).sort((left, right) => String(left.date).localeCompare(String(right.date)))
@@ -2829,7 +2829,8 @@ function isSkuAccuracyPeriod(launch, indicator) {
 }
 
 function getLaunchNumericValue(launch, indicator = null) {
-  if (isSkuDivergencePeriod(launch.date, indicator?.name || launch.indicator)) {
+  if (isSkuDivergencePeriod(launch.date, indicator?.name || launch.indicator) &&
+      (launch.formulaData?.divergentSkus !== undefined || launch.formulaData?.totalSkus !== undefined)) {
     const payload = launch.formulaData || {};
     const numerator = payload.divergentSkus;
     const denominator = payload.totalSkus;
@@ -2893,7 +2894,7 @@ function migrateReceivingAverageLaunches() {
 
     department.launches = department.launches.map((launch) => {
       const indicator = getIndicatorByName(departmentKey, launch.indicator);
-      const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator, launch.date);
+      const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator, launch.date, launch.formulaData);
       const recalculatedValue = calculateReceivingAverageMinutesFromPayload(formulaType, launch.formulaData);
       if (!Number.isFinite(recalculatedValue)) return launch;
 
@@ -3020,7 +3021,7 @@ function isSkuDivergencePeriod(date, indicatorName) {
     normalizeTextKey(indicatorName || "").includes("wms");
 }
 
-function getLaunchFormulaType(indicatorName, recordDate = null) {
+function getLaunchFormulaType(indicatorName, recordDate = null, payload = null) {
   const key = normalizeTextKey(indicatorName);
   if (selectedDepartmentKey === "recebimento") {
     if (key.includes("capacidade") && key.includes("recebimento")) {
@@ -3052,6 +3053,8 @@ function getLaunchFormulaType(indicatorName, recordDate = null) {
       return "estoque_acuracidade_sku";
     }
     if (key.includes("divergencia") && key.includes("contabil") && key.includes("wms")) {
+      if (payload?.divergentSkus !== undefined || payload?.totalSkus !== undefined) return "estoque_divergencia_wms_sku";
+      if (payload?.divergenceValue !== undefined || payload?.stockValue !== undefined) return "estoque_divergencia_wms_valor";
       return isSkuDivergencePeriod(recordDate, indicatorName)
         ? "estoque_divergencia_wms_sku" : "estoque_divergencia_wms_valor";
     }
@@ -3155,11 +3158,11 @@ function getLaunchFormulaType(indicatorName, recordDate = null) {
   return null;
 }
 
-function getLaunchFormulaTypeForDepartment(departmentKey, indicatorName, recordDate = null) {
+function getLaunchFormulaTypeForDepartment(departmentKey, indicatorName, recordDate = null, payload = null) {
   const previousDepartmentKey = selectedDepartmentKey;
   selectedDepartmentKey = departmentKey;
   try {
-    return getLaunchFormulaType(indicatorName, recordDate);
+    return getLaunchFormulaType(indicatorName, recordDate, payload);
   } finally {
     selectedDepartmentKey = previousDepartmentKey;
   }
@@ -3899,13 +3902,19 @@ function isSkuAccuracyForm() {
     isSkuAccuracyPeriod({ date: qs('#launchForm [name="date"]')?.value, indicator: qs("#launchIndicator")?.value });
 }
 
+function getEditingFormulaPayload(indicatorName) {
+  const launch = currentDepartment().launches.find(item => item.id === editingLaunchId);
+  return launch && getIndicatorByName(selectedDepartmentKey, launch.indicator)?.name === indicatorName
+    ? launch.formulaData : null;
+}
+
 function updateLaunchResultFromFormula() {
   const indicatorName = qs("#launchIndicator")?.value || "";
   const recordDate = qs('#launchForm [name="date"]')?.value;
   qs("#launchIndicator")?.querySelectorAll("option").forEach(option => {
     option.textContent = getIndicatorDisplayName({ name: option.value }, recordDate);
   });
-  const formulaType = getLaunchFormulaType(indicatorName, recordDate);
+  const formulaType = getLaunchFormulaType(indicatorName, recordDate, getEditingFormulaPayload(indicatorName));
   const valueInput = qs('#launchForm [name="value"]');
   const hintElement = qs("#launchFormulaHint");
   if (!valueInput || !hintElement) return;
@@ -3957,7 +3966,7 @@ function updateLaunchResultFromFormula() {
 
 function syncLaunchFormByIndicator() {
   const indicatorName = qs("#launchIndicator")?.value || "";
-  const formulaType = getLaunchFormulaType(indicatorName, qs('#launchForm [name="date"]')?.value);
+  const formulaType = getLaunchFormulaType(indicatorName, qs('#launchForm [name="date"]')?.value, getEditingFormulaPayload(indicatorName));
   const definition = formulaType ? launchFormulaDefinitions[formulaType] : null;
   const formulaFields = qs("#launchFormulaFields");
   const titleElement = qs("#launchFormulaTitle");
@@ -5670,6 +5679,7 @@ function startLaunchEdit(launchId) {
 
   const launchForm = qs("#launchForm");
   launchForm.reset();
+  editingLaunchId = launchId;
   launchForm.elements.indicator.value = getIndicatorByName(selectedDepartmentKey, launch.indicator)?.name || launch.indicator;
   launchForm.elements.date.value = launch.date;
   syncLaunchFormByIndicator();
@@ -5678,7 +5688,7 @@ function startLaunchEdit(launchId) {
   launchForm.elements.shift.value = normalizeDepartmentShift(launch.shift);
   launchForm.elements.comment.value = launch.comment || "";
 
-  const formulaType = getLaunchFormulaType(launch.indicator, launch.date);
+  const formulaType = getLaunchFormulaType(launch.indicator, launch.date, launch.formulaData);
   if (formulaType && launch.formulaData) {
     Object.entries(launch.formulaData).forEach(([key, fieldValue]) => {
       const input = qs(`#launchForm [name="${key}"]`);
@@ -8071,7 +8081,7 @@ function formatLaunchReportInputValue(field, value) {
 }
 
 function getManagementLaunchInputEntries(launch, departmentKey, numericValue) {
-  const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator, launch.date);
+  const formulaType = getLaunchFormulaTypeForDepartment(departmentKey, launch.indicator, launch.date, launch.formulaData);
   const definition = formulaType ? launchFormulaDefinitions[formulaType] : null;
   const payload = launch.formulaData && typeof launch.formulaData === "object" ? launch.formulaData : {};
   if (isSkuAccuracyPeriod(launch)) {
@@ -8954,7 +8964,7 @@ function setupInteractions() {
     const data = new FormData(submittedForm);
     const indicator = currentDepartment().indicators.find((item) => item.name === data.get("indicator"));
     const value = parseLocalizedNumber(data.get("value"));
-    const formulaType = getLaunchFormulaType(String(data.get("indicator")), String(data.get("date")));
+    const formulaType = getLaunchFormulaType(String(data.get("indicator")), String(data.get("date")), getEditingFormulaPayload(String(data.get("indicator"))));
     const formulaPayload = extractFormulaPayload(data, formulaType);
     const wasEditing = Boolean(editingLaunchId);
     const existingLaunch = wasEditing
