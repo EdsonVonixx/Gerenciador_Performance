@@ -151,7 +151,7 @@ const departments = {
     indicators: [
       { name: "Acuracidade de Estoque (Geral)", unit: "%", target: 95, goal: "higher", targetLabel: "Meta", frequency: "Diário", category: "Estratégico" },
       { name: "Cumprimento do Plano de Inventário", unit: "%", target: 100, goal: "higher", targetLabel: "Meta", frequency: "Mensal", category: "Tático/Operacional" },
-      { name: "Divergência Contábil x WMS (SKU)", unit: "%", target: 3, goal: "lower", targetLabel: "Meta", frequency: "Diário", category: "Estratégico" },
+      { name: "Divergência Contábil x WMS (SKU)", unit: "%", target: 5, goal: "lower", targetLabel: "Meta", frequency: "Diário", category: "Estratégico" },
       { name: "Índice de Divergências Tratadas", unit: "%", target: 98, goal: "higher", targetLabel: "Meta", frequency: "Semanal", category: "Tático/Operacional" },
       { name: "Estoque Slow Mover (Maior que 90 dias)", unit: "%", target: 10, goal: "lower", targetLabel: "Meta", frequency: "Semanal", category: "Tático/Operacional" },
     ],
@@ -6903,7 +6903,7 @@ const tvDashboardData = {
         {
           name: "Divergência Contábil x WMS (SKU)",
           accumulated: "29%",
-          target: "8%",
+          target: "5%",
           status: "danger",
         },
         {
@@ -7024,7 +7024,7 @@ const tvDashboardData = {
       indicator: "Divergência Contábil x WMS (SKU)",
       sector: "Estoque e Inventário",
       accumulated: "29%",
-      target: "8%",
+      target: "5%",
     },
     {
       indicator: "Cumprimento do Plano de Inventário",
