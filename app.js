@@ -123,8 +123,8 @@ const departments = {
     label: "Almoxarifado (Uso e Consumo)",
     color: "#1d6b57",
     indicators: [
-      { name: "Ruptura de Materiais Estocáveis", unit: "%", target: 5, goal: "lower", targetLabel: "Meta", frequency: "Diário" },
-      { name: "Acuracidade de Estoque (Itens)", unit: "%", target: 95, goal: "higher", targetLabel: "Meta", frequency: "Diário" },
+      { name: "Ruptura de Materiais Estocáveis", unit: "%", target: 5, goal: "lower", targetLabel: "Meta", frequency: "Diário", category: "Estratégico" },
+      { name: "Acuracidade de Estoque (Itens)", unit: "%", target: 95, goal: "higher", targetLabel: "Meta", frequency: "Diário", category: "Estratégico" },
       { name: "Aderência ao Estoque Mínimo", unit: "%", target: 95, goal: "higher", targetLabel: "Meta", frequency: "Diário" },
       { name: "Cumprimento do Plano de Inventário", unit: "%", target: 100, goal: "higher", targetLabel: "Meta", frequency: "Mensal" },
       { name: "Estoque Slow Mover (> 90 dias)", unit: "%", target: 10, goal: "lower", targetLabel: "Meta", frequency: "Semanal" },
@@ -185,6 +185,12 @@ const departments = {
     records: [],
   },
 };
+// One stable catalog order keeps cards, chart canvases and report sections aligned.
+Object.values(departments).forEach((department) => {
+  department.indicators.sort((left, right) =>
+    Number(right.category === "Estratégico") - Number(left.category === "Estratégico"));
+});
+
 const statusLabel = {
   success: "Dentro da meta",
   warn: "Atenção",
