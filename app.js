@@ -163,7 +163,7 @@ const departments = {
     color: "#b87818",
     indicators: [
       { name: "Índice de Perdas por Ajuste nos Picks Secos", unit: "%", target: 0.05, goal: "lower", targetLabel: "Meta", category: "Estratégico" },
-      { name: "Índice de OPs Atendidas Erradas", unit: "%", target: 0.3, goal: "lower", targetLabel: "Meta", category: "Estratégico" },
+      { name: "Índice de OPs Não Atendidas", unit: "%", target: 0.3, goal: "lower", targetLabel: "Meta", category: "Estratégico" },
       { name: "Índice de Erros de Movimentação", unit: "%", target: 0.5, goal: "lower", targetLabel: "Meta" },
       { name: "Erros Expedição Fábrica (Produto Acabado)", unit: "R$", target: 0, goal: "lower", targetLabel: "Meta" },
       { name: "Tempo Médio Carregamento Carretas", unit: "min", target: 80, goal: "lower", targetLabel: "Meta" },
@@ -978,6 +978,7 @@ function getIndicatorByName(departmentKey, indicatorName) {
       "tempo medio de liberacao do material": "Tempo Médio de Recebimento",
     },
     secos: {
+      "indice de ops atendidas erradas": "Índice de OPs Não Atendidas",
       "indice de perdas por ajuste no picks secos": "Índice de Perdas por Ajuste nos Picks Secos",
     },
   };
@@ -2218,11 +2219,11 @@ function getCardDetails(indicator) {
     }
   }
 
-  if (indicatorKey.includes("ops") && indicatorKey.includes("erradas")) {
+  if (indicatorKey.includes("ops") && (indicatorKey.includes("erradas") || indicatorKey.includes("nao atendidas"))) {
     const rows = rowsWithFields(["wrongOps", "requestedOps"]);
     if (rows.length > 0) {
       return [
-        ["OPs erradas", formatNumber(sumField(rows, "wrongOps"))],
+        ["OPs não atendidas", formatNumber(sumField(rows, "wrongOps"))],
         ["OPs solicitadas", formatNumber(sumField(rows, "requestedOps"))],
       ];
     }
@@ -3075,7 +3076,7 @@ function getLaunchFormulaType(indicatorName, recordDate = null, payload = null) 
     if (key.includes("perdas") && key.includes("picks")) {
       return "secos_perdas_picks";
     }
-    if (key.includes("ops") && key.includes("erradas")) {
+    if (key.includes("ops") && (key.includes("erradas") || key.includes("nao atendidas"))) {
       return "secos_ops_atendidas_erradas";
     }
     if (key.includes("erros") && key.includes("movimentacao")) {
@@ -3402,8 +3403,8 @@ launchFormulaDefinitions.secos_perdas_picks = {
 };
 
 launchFormulaDefinitions.secos_ops_atendidas_erradas = {
-  title: "Cálculo de Índice de OPs Atendidas Erradas",
-  hint: "Índice (%) = (OPs com erro / Total de OPs solicitadas) x 100.",
+  title: "Cálculo de Índice de OPs Não Atendidas",
+  hint: "Índice (%) = (OPs não atendidas / Total de OPs solicitadas) x 100.",
   fields: ["wrongOps", "requestedOps"],
   allowNegative: false,
 };
@@ -4086,6 +4087,9 @@ function syncLaunchFormByIndicator() {
   valueInput.placeholder = "Calculado automaticamente";
   valueInput.step = "0.01";
   valueInput.min = definition.allowNegative ? "-9999999" : "0";
+  if (formulaType === "secos_ops_atendidas_erradas") {
+    qs('#launchFormulaFields [name="wrongOps"]').parentElement.firstChild.textContent = "OPs não atendidas ";
+  }
   if (formulaType === "ruptura_estocaveis") {
     qs('#launchFormulaFields [name="zeroStockMaintenanceItems"]').parentElement.firstChild.textContent = "Itens de manutenção com estoque zerado ";
     qs('#launchFormulaFields [name="stockableMaintenanceItems"]').parentElement.firstChild.textContent = "Total de materiais estocáveis de manutenção ";
@@ -5049,7 +5053,7 @@ function applySecosLaunchFormulaDetails(indicator, formulaType, payload) {
   if (formulaType === "secos_ops_atendidas_erradas") {
     if (!Number.isFinite(payload.wrongOps) || !Number.isFinite(payload.requestedOps)) return;
     indicator.details = [
-      ["OPs com erro", formatNumber(payload.wrongOps)],
+      ["OPs não atendidas", formatNumber(payload.wrongOps)],
       ["OPs solicitadas", formatNumber(payload.requestedOps)],
     ];
   }
@@ -6946,7 +6950,7 @@ const tvDashboardData = {
           status: "success",
         },
         {
-          name: "Índice de OPs Atendidas Erradas",
+          name: "Índice de OPs Não Atendidas",
           accumulated: "0,2%",
           target: "0,3%",
           status: "success",
@@ -8036,7 +8040,7 @@ const launchReportFieldLabels = {
   lossItems: "Perdas no estoque",
   adjustedValue: "Valor ajustado",
   totalStockValue: "Valor do estoque",
-  wrongOps: "OPs com erro",
+  wrongOps: "OPs não atendidas",
   requestedOps: "OPs solicitadas",
   expeditionErrorValue: "Sobras e faltas",
   loadedTrucks: "Carretas carregadas",
