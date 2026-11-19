@@ -2107,10 +2107,14 @@ function formatShortDate(dateValue) {
 
 function getCardDetails(indicator) {
   const history = getFilteredHistory(indicator);
-  if (history.length && history.every(row => isSkuAccuracyPeriod({date:row.date}, indicator))) {
+  if (isSkuAccuracyPeriod({date:"2026-11-01"}, indicator)) {
+    const counts = history.map(row => isSkuAccuracyPeriod({date:row.date}, indicator) || row.correctItems !== undefined
+      ? getAccuracyCounts(row) : null);
+    const complete = counts.length > 0 && counts.every(Boolean);
+    const totals = complete ? counts.reduce((sum,row) => ({audited:sum.audited+row.audited, divergent:sum.divergent+row.audited-row.correct}), {audited:0,divergent:0}) : null;
     return [
-      ["SKUs corretos", formatIntegerDisplay(history.reduce((sum, row) => sum + Number(row.correctItems ?? row.dailyAccuracy ?? 0), 0))],
-      ["SKUs auditados", formatIntegerDisplay(history.reduce((sum, row) => sum + Number(row.totalCountedItems ?? row.inventoriedItems ?? row.countedSkusDay ?? 0), 0))],
+      ["Total de SKUs contados", totals ? formatIntegerDisplay(totals.audited) : "Sem dados"],
+      ["Total de SKUs divergentes", totals ? formatIntegerDisplay(totals.divergent) : "Sem dados"],
     ];
   }
   const indicatorKey = normalizeTextKey(indicator.name);
