@@ -2113,8 +2113,8 @@ function getCardDetails(indicator) {
     const complete = counts.length > 0 && counts.every(Boolean);
     const totals = complete ? counts.reduce((sum,row) => ({audited:sum.audited+row.audited, divergent:sum.divergent+row.audited-row.correct}), {audited:0,divergent:0}) : null;
     return [
-      ["Total de SKUs contados", totals ? formatIntegerDisplay(totals.audited) : "Sem dados"],
-      ["Total de SKUs divergentes", totals ? formatIntegerDisplay(totals.divergent) : "Sem dados"],
+      ["SKUs contados", totals ? formatIntegerDisplay(totals.audited) : "Sem dados"],
+      ["SKUs divergentes", totals ? formatIntegerDisplay(totals.divergent) : "Sem dados"],
     ];
   }
   const indicatorKey = normalizeTextKey(indicator.name);
