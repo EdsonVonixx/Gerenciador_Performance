@@ -3676,6 +3676,10 @@ function computeLaunchFormulaValue(formulaType) {
     const dailyAccuracy = getLaunchFormulaFieldValue("dailyAccuracy");
     const countedSkusDay = getLaunchFormulaFieldValue("countedSkusDay");
     if (isSkuAccuracyForm()) {
+      if (String(qs('#launchForm [name="date"]')?.value) >= "2026-11-01") {
+        const counts = getAccuracyInputCounts(dailyAccuracy, countedSkusDay);
+        return counts ? counts.correct / counts.audited * 100 : NaN;
+      }
       return Number.isInteger(dailyAccuracy) && Number.isInteger(countedSkusDay) &&
         dailyAccuracy >= 0 && countedSkusDay > 0 && dailyAccuracy <= countedSkusDay
         ? dailyAccuracy / countedSkusDay * 100 : NaN;
@@ -3932,6 +3936,11 @@ function computeLaunchFormulaValue(formulaType) {
   return NaN;
 }
 
+function getAccuracyInputCounts(correct, divergent) {
+  return Number.isInteger(correct) && Number.isInteger(divergent) && correct >= 0 && divergent >= 0 && correct + divergent > 0
+    ? {correct, divergent, audited:correct + divergent} : null;
+}
+
 function isSkuAccuracyForm() {
   return ["almoxarifado", "estoque"].includes(selectedDepartmentKey) &&
     isSkuAccuracyPeriod({ date: qs('#launchForm [name="date"]')?.value, indicator: qs("#launchIndicator")?.value });
@@ -3964,7 +3973,7 @@ function updateLaunchResultFromFormula() {
     ...launchFormulaDefinitions[formulaType],
     title: "Acuracidade por SKUs",
     hint: String(recordDate) >= "2026-11-01"
-      ? "Acuracidade diária (%) = (SKUs corretos / SKUs auditados) x 100. Desde novembro/2026, o resultado do período é (soma dos SKUs corretos / soma dos SKUs auditados) x 100; não é a média dos percentuais diários."
+      ? "SKUs auditados = SKUs corretos + SKUs divergentes. Acuracidade diária (%) = corretos / (corretos + divergentes) x 100. Acuracidade total (%) = soma dos corretos / (soma dos corretos + soma dos divergentes) x 100; não é a média dos percentuais diários."
       : "Acuracidade (%) = (SKUs corretos / SKUs auditados) x 100. Outubro/2026 mantém a média dos percentuais diários.",
   } : launchFormulaDefinitions[formulaType];
   if (formulaType === "acuracidade_uso_consumo") {
@@ -3974,7 +3983,11 @@ function updateLaunchResultFromFormula() {
     if (skuPeriod) input.removeAttribute("max"); else input.max = "100";
     input.step = skuPeriod ? "1" : "any";
     input.placeholder = skuPeriod ? "Ex.: 49" : "Ex.: 97,5";
-    qs('#launchForm [name="countedSkusDay"]').parentElement.firstChild.textContent = skuPeriod ? "SKUs auditados no dia " : "SKUs contados no dia ";
+    const countInput = qs('#launchForm [name="countedSkusDay"]');
+    const divergentEntry = skuPeriod && String(recordDate) >= "2026-11-01";
+    countInput.parentElement.firstChild.textContent = divergentEntry ? "SKU's divergentes " : skuPeriod ? "SKUs auditados no dia " : "SKUs contados no dia ";
+    countInput.min = divergentEntry ? "0" : "1";
+    countInput.placeholder = divergentEntry ? "Ex.: 1" : "Ex.: 50";
   }
   const computedValue = computeLaunchFormulaValue(formulaType);
   const resultSuffix = definition.resultSuffix || "%";
@@ -5305,6 +5318,12 @@ function extractFormulaPayload(formData, formulaType) {
     };
   }
   if (formulaType === "acuracidade_uso_consumo") {
+    if (String(formData.get("date")) >= "2026-11-01") {
+      const counts = getAccuracyInputCounts(parseLocalizedNumber(formData.get("dailyAccuracy")), parseLocalizedNumber(formData.get("countedSkusDay")));
+      if (!counts) return null;
+      // Keep the stored audited-total field compatible with historical records.
+      return {dailyAccuracy:counts.correct, countedSkusDay:counts.audited, divergentSkusDay:counts.divergent};
+    }
     return {
       dailyAccuracy: parseLocalizedNumber(formData.get("dailyAccuracy")),
       countedSkusDay: parseLocalizedNumber(formData.get("countedSkusDay")),
@@ -5576,6 +5595,7 @@ function buildHistoryEntry(dateValue, numericValue, formulaType, formulaPayload,
   if (formulaType === "acuracidade_uso_consumo") {
     entry.dailyAccuracy = formulaPayload.dailyAccuracy;
     entry.countedSkusDay = formulaPayload.countedSkusDay;
+    if (Number.isFinite(formulaPayload.divergentSkusDay)) entry.divergentSkusDay = formulaPayload.divergentSkusDay;
   }
   if (formulaType === "estoque_acuracidade_sku") {
     entry.correctItems = formulaPayload.correctItems;
@@ -5738,6 +5758,13 @@ function startLaunchEdit(launchId) {
       if (!input || !Number.isFinite(fieldValue)) return;
       input.value = fieldValue;
     });
+    if (formulaType === "acuracidade_uso_consumo" && String(launch.date) >= "2026-11-01") {
+      const counts = getAccuracyCounts(launch);
+      if (counts) {
+        qs('#launchForm [name="dailyAccuracy"]').value = counts.correct;
+        qs('#launchForm [name="countedSkusDay"]').value = launch.formulaData.divergentSkusDay ?? counts.audited - counts.correct;
+      }
+    }
     updateLaunchResultFromFormula();
   } else {
     const numericValue = getLaunchNumericValue(launch);
