@@ -1950,13 +1950,40 @@ function getFilteredHistory(indicator, department = currentDepartment()) {
   });
 }
 
+function getAccuracyCounts(row) {
+  const payload = row.formulaData || row;
+  const correct = payload.correctItems ?? payload.dailyAccuracy;
+  const audited = payload.totalCountedItems ?? payload.inventoriedItems ?? payload.countedSkusDay;
+  if (correct === null || correct === undefined || correct === "" || audited === null || audited === undefined || audited === "") return null;
+  const numerator = Number(correct), denominator = Number(audited);
+  return Number.isFinite(numerator) && Number.isFinite(denominator) && numerator >= 0 && denominator > 0 && numerator <= denominator
+    ? { correct: numerator, audited: denominator } : null;
+}
+
+function usesWeightedAccuracy(row, indicator) {
+  return isSkuAccuracyPeriod({date:row.date}, indicator) && String(row.date) >= "2026-11-01";
+}
+
+function calculateIndicatorPeriodAverage(indicator, history) {
+  if (!history.length) return null;
+  const weighted = history.filter(row => usesWeightedAccuracy(row, indicator));
+  if (weighted.length) {
+    // October uses a different methodology; never blend the two regimes silently.
+    if (weighted.length !== history.length) return null;
+    const counts = weighted.map(getAccuracyCounts);
+    if (counts.some(row => !row)) return null;
+    const totals = counts.reduce((sum, row) => ({correct:sum.correct+row.correct, audited:sum.audited+row.audited}), {correct:0,audited:0});
+    return totals.audited > 0 ? totals.correct / totals.audited * 100 : null;
+  }
+  return history.reduce((sum, row) => sum + Number(row.value), 0) / history.length;
+}
+
 function getIndicatorAverageValue(indicator, department = currentDepartment()) {
   const filteredHistory = getFilteredHistory(indicator, department);
   if (filteredHistory.length === 0) {
     return null;
   }
-  const total = filteredHistory.reduce((acc, item) => acc + Number(item.value), 0);
-  return total / filteredHistory.length;
+  return calculateIndicatorPeriodAverage(indicator, filteredHistory);
 }
 
 function isSummedIndicator(indicator) {
@@ -2057,6 +2084,8 @@ function formatMetric(indicator, valueOverride = undefined) {
   const currentValue =
     valueOverride !== undefined ? valueOverride : getIndicatorAccumulatedValue(indicator);
   if (currentValue === null || currentValue === undefined || !Number.isFinite(Number(currentValue))) {
+    const history = getFilteredHistory(indicator);
+    if (history.some(row => usesWeightedAccuracy(row, indicator)) && history.some(row => !usesWeightedAccuracy(row, indicator))) return "Selecione um mês";
     return "Sem dados";
   }
   if (indicator.unit === "R$") {
@@ -2081,7 +2110,7 @@ function getCardDetails(indicator) {
   if (history.length && history.every(row => isSkuAccuracyPeriod({date:row.date}, indicator))) {
     return [
       ["SKUs corretos", formatIntegerDisplay(history.reduce((sum, row) => sum + Number(row.correctItems ?? row.dailyAccuracy ?? 0), 0))],
-      ["SKUs contados", formatIntegerDisplay(history.reduce((sum, row) => sum + Number(row.totalCountedItems ?? row.inventoriedItems ?? row.countedSkusDay ?? 0), 0))],
+      ["SKUs auditados", formatIntegerDisplay(history.reduce((sum, row) => sum + Number(row.totalCountedItems ?? row.inventoriedItems ?? row.countedSkusDay ?? 0), 0))],
     ];
   }
   const indicatorKey = normalizeTextKey(indicator.name);
@@ -2822,8 +2851,7 @@ function getIndicatorDisplayName(indicator, date = null) {
     ? "Acuracidade de Estoque (SKUs)" : indicator.name;
   const bounds = getDateFilterBounds();
   const start = toDateOrNull("2026-10-01");
-  const end = toDateOrNull("2027-01-01");
-  if (bounds && bounds.startDate >= start && bounds.endDate < end &&
+  if (bounds && bounds.startDate >= start &&
       isSkuAccuracyPeriod({ date: "2026-10-01" }, indicator)) {
     return "Acuracidade de Estoque (SKUs)";
   }
@@ -2831,7 +2859,7 @@ function getIndicatorDisplayName(indicator, date = null) {
 }
 
 function isSkuAccuracyPeriod(launch, indicator) {
-  return /^2026-(10|11|12)-\d{2}$/.test(String(launch.date)) &&
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(launch.date)) && String(launch.date) >= "2026-10-01" &&
     ["Acuracidade de Estoque (Geral)", "Acuracidade de Estoque (Itens)", "Acuracidade de Estoque (SKU)"]
       .includes(indicator?.name || launch.indicator);
 }
@@ -3934,8 +3962,10 @@ function updateLaunchResultFromFormula() {
   const skuPeriod = formulaType === "acuracidade_uso_consumo" && isSkuAccuracyForm();
   const definition = skuPeriod ? {
     ...launchFormulaDefinitions[formulaType],
-    title: "Acuracidade por SKUs - Outubro a Dezembro/2026",
-    hint: "Acuracidade (%) = (SKUs corretos / SKUs contados) x 100.",
+    title: "Acuracidade por SKUs",
+    hint: String(recordDate) >= "2026-11-01"
+      ? "Acuracidade diária (%) = (SKUs corretos / SKUs auditados) x 100. Desde novembro/2026, o resultado do período é (soma dos SKUs corretos / soma dos SKUs auditados) x 100; não é a média dos percentuais diários."
+      : "Acuracidade (%) = (SKUs corretos / SKUs auditados) x 100. Outubro/2026 mantém a média dos percentuais diários.",
   } : launchFormulaDefinitions[formulaType];
   if (formulaType === "acuracidade_uso_consumo") {
     qs("#launchFormulaTitle").textContent = definition.title;
@@ -3944,6 +3974,7 @@ function updateLaunchResultFromFormula() {
     if (skuPeriod) input.removeAttribute("max"); else input.max = "100";
     input.step = skuPeriod ? "1" : "any";
     input.placeholder = skuPeriod ? "Ex.: 49" : "Ex.: 97,5";
+    qs('#launchForm [name="countedSkusDay"]').parentElement.firstChild.textContent = skuPeriod ? "SKUs auditados no dia " : "SKUs contados no dia ";
   }
   const computedValue = computeLaunchFormulaValue(formulaType);
   const resultSuffix = definition.resultSuffix || "%";
@@ -4520,6 +4551,8 @@ function renderLineCharts() {
           </header>
           <div class="line-values">
             <span class="line-value"><b>Acumulado</b>${formatMetric(indicator, accumulatedValue)}</span>
+            ${history.length && history.every(row => usesWeightedAccuracy(row, indicator))
+              ? `<span class="line-value"><b>Média diária (apoio)</b>${formatMetric(indicator, history.reduce((sum,row)=>sum+Number(row.value),0)/history.length)}</span>` : ""}
             ${
               isTrackingIndicator
                 ? ""
@@ -8097,7 +8130,7 @@ function getManagementLaunchInputEntries(launch, departmentKey, numericValue) {
   if (isSkuAccuracyPeriod(launch)) {
     return [
       { field: "correctItems", label: "SKUs corretos", value: payload.correctItems ?? payload.dailyAccuracy },
-      { field: "totalCountedItems", label: "SKUs contados", value: payload.totalCountedItems ?? payload.inventoriedItems ?? payload.countedSkusDay },
+      { field: "totalCountedItems", label: "SKUs auditados", value: payload.totalCountedItems ?? payload.inventoriedItems ?? payload.countedSkusDay },
     ].filter(entry => entry.value !== null && entry.value !== undefined && Number.isFinite(Number(entry.value)))
       .map(entry => ({ ...entry, value: Number(entry.value) }));
   }
@@ -8186,7 +8219,7 @@ function getManagementLaunchReportRows() {
       const monthResult = values.length
         ? isSummedIndicator(indicator)
           ? values.reduce((total, value) => total + value, 0)
-          : values.reduce((total, value) => total + value, 0) / values.length
+          : calculateIndicatorPeriodAverage(indicator, launches.map(launch => ({...launch,value:getLaunchNumericValue(launch,indicator)})).filter(row => Number.isFinite(row.value)))
         : null;
       rows.push({
         type: "summary",
