@@ -1964,11 +1964,6 @@ function usesWeightedAccuracy(row, indicator) {
   return isSkuAccuracyPeriod({date:row.date}, indicator) && String(row.date) >= "2026-11-01";
 }
 
-function isInverseStockAccuracy(row, indicator) {
-  return /^2026-(11|12)-\d{2}$/.test(String(row.date)) &&
-    ["Acuracidade de Estoque (Geral)", "Acuracidade de Estoque (SKU)"].includes(indicator?.name || row.indicator);
-}
-
 function getAccuracyAggregationHistory(indicator, department = currentDepartment()) {
   const key = operationalDepartmentKeys.find(key => departments[key] === department);
   if (!key || !Array.isArray(department.launches)) return getFilteredHistory(indicator, department);
@@ -1988,14 +1983,10 @@ function calculateIndicatorPeriodAverage(indicator, history) {
   if (weighted.length) {
     // October uses a different methodology; never blend the two regimes silently.
     if (weighted.length !== history.length) return null;
-    const inverse = weighted.filter(row=>isInverseStockAccuracy(row,indicator));
-    if (inverse.length && inverse.length !== weighted.length) return null;
     const counts = weighted.map(getAccuracyCounts);
     if (counts.some(row => !row)) return null;
     const totals = counts.reduce((sum, row) => ({correct:sum.correct+row.correct, audited:sum.audited+row.audited}), {correct:0,audited:0});
-    return inverse.length
-      ? totals.correct > 0 ? totals.audited / totals.correct * 100 : null
-      : totals.audited > 0 ? totals.correct / totals.audited * 100 : null;
+    return totals.audited > 0 ? totals.correct / totals.audited * 100 : null;
   }
   return history.reduce((sum, row) => sum + Number(row.value), 0) / history.length;
 }
@@ -2108,8 +2099,7 @@ function formatMetric(indicator, valueOverride = undefined) {
     valueOverride !== undefined ? valueOverride : getIndicatorAccumulatedValue(indicator);
   if (currentValue === null || currentValue === undefined || !Number.isFinite(Number(currentValue))) {
     const history = getFilteredHistory(indicator);
-    if ((history.some(row => usesWeightedAccuracy(row, indicator)) && history.some(row => !usesWeightedAccuracy(row, indicator))) ||
-        (history.some(row => isInverseStockAccuracy(row,indicator)) && history.some(row => !isInverseStockAccuracy(row,indicator)))) return "Selecione um mês";
+    if (history.some(row => usesWeightedAccuracy(row, indicator)) && history.some(row => !usesWeightedAccuracy(row, indicator))) return "Selecione um mês";
     return "Sem dados";
   }
   if (indicator.unit === "R$") {
@@ -2894,10 +2884,6 @@ function isSkuAccuracyPeriod(launch, indicator) {
 }
 
 function getLaunchNumericValue(launch, indicator = null) {
-  if (isInverseStockAccuracy(launch,indicator)) {
-    const counts = getAccuracyCounts(launch);
-    return counts && counts.correct > 0 ? counts.audited / counts.correct * 100 : NaN;
-  }
   if (isSkuDivergencePeriod(launch.date, indicator?.name || launch.indicator) &&
       (launch.formulaData?.divergenceValue !== undefined || launch.formulaData?.stockValue !== undefined)) {
     const payload = launch.formulaData || {};
@@ -3711,9 +3697,6 @@ function computeLaunchFormulaValue(formulaType) {
     if (isSkuAccuracyForm()) {
       if (String(qs('#launchForm [name="date"]')?.value) >= "2026-11-01") {
         const counts = getAccuracyInputCounts(dailyAccuracy, countedSkusDay);
-        if (isInverseStockAccuracy({date:qs('#launchForm [name="date"]')?.value,indicator:qs("#launchIndicator")?.value})) {
-          return counts && counts.correct > 0 ? counts.audited / counts.correct * 100 : NaN;
-        }
         return counts ? counts.correct / counts.audited * 100 : NaN;
       }
       return Number.isInteger(dailyAccuracy) && Number.isInteger(countedSkusDay) &&
@@ -4008,10 +3991,8 @@ function updateLaunchResultFromFormula() {
   const definition = skuPeriod ? {
     ...launchFormulaDefinitions[formulaType],
     title: "Acuracidade por SKUs",
-    hint: isInverseStockAccuracy({date:recordDate,indicator:indicatorName})
-      ? "Regra do Estoque para novembro e dezembro/2026: SKUs conferidos = corretos + divergentes. Resultado diário (%) = conferidos / corretos x 100. Resultado total (%) = soma dos conferidos / soma dos corretos x 100. Com zero SKUs corretos, o cálculo é indefinido. Valores acima de 100% indicam divergências; a meta cadastrada não foi alterada."
-      : String(recordDate) >= "2026-11-01"
-      ? "SKUs auditados = SKUs corretos + SKUs divergentes. Acuracidade diária (%) = corretos / (corretos + divergentes) x 100. Acuracidade total (%) = soma dos corretos / (soma dos corretos + soma dos divergentes) x 100; não é a média dos percentuais diários."
+    hint: String(recordDate) >= "2026-11-01"
+      ? "SKUs conferidos = SKUs corretos + SKUs divergentes. Acuracidade diária (%) = SKUs corretos / SKUs conferidos x 100. Acuracidade total (%) = soma dos SKUs corretos / soma dos SKUs conferidos x 100; não é a média dos percentuais diários."
       : "Acuracidade (%) = (SKUs corretos / SKUs auditados) x 100. Outubro/2026 mantém a média dos percentuais diários.",
   } : launchFormulaDefinitions[formulaType];
   if (formulaType === "acuracidade_uso_consumo") {
