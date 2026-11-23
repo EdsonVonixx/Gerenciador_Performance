@@ -3955,9 +3955,9 @@ function computeLaunchFormulaValue(formulaType) {
   return NaN;
 }
 
-function getAccuracyInputCounts(correct, divergent) {
-  return Number.isInteger(correct) && Number.isInteger(divergent) && correct >= 0 && divergent >= 0 && correct + divergent > 0
-    ? {correct, divergent, audited:correct + divergent} : null;
+function getAccuracyInputCounts(correct, audited) {
+  return Number.isInteger(correct) && Number.isInteger(audited) && correct >= 0 && audited > 0 && correct <= audited
+    ? {correct, divergent:audited - correct, audited} : null;
 }
 
 function isSkuAccuracyForm() {
@@ -3992,7 +3992,7 @@ function updateLaunchResultFromFormula() {
     ...launchFormulaDefinitions[formulaType],
     title: "Acuracidade por SKUs",
     hint: String(recordDate) >= "2026-11-01"
-      ? "SKUs conferidos = SKUs corretos + SKUs divergentes. Acuracidade diária (%) = SKUs corretos / SKUs conferidos x 100. Acuracidade total (%) = soma dos SKUs corretos / soma dos SKUs conferidos x 100; não é a média dos percentuais diários."
+      ? "Informe SKUs corretos e o total de SKUs conferidos. Acuracidade diária (%) = (SKUs corretos / SKUs conferidos) x 100. Acuracidade total (%) = (soma dos SKUs corretos / soma dos SKUs conferidos) x 100. SKUs divergentes = conferidos - corretos. O total mensal não é a média dos percentuais diários."
       : "Acuracidade (%) = (SKUs corretos / SKUs auditados) x 100. Outubro/2026 mantém a média dos percentuais diários.",
   } : launchFormulaDefinitions[formulaType];
   if (formulaType === "acuracidade_uso_consumo") {
@@ -4003,10 +4003,9 @@ function updateLaunchResultFromFormula() {
     input.step = skuPeriod ? "1" : "any";
     input.placeholder = skuPeriod ? "Ex.: 49" : "Ex.: 97,5";
     const countInput = qs('#launchForm [name="countedSkusDay"]');
-    const divergentEntry = skuPeriod && String(recordDate) >= "2026-11-01";
-    countInput.parentElement.firstChild.textContent = divergentEntry ? "SKU's divergentes " : skuPeriod ? "SKUs auditados no dia " : "SKUs contados no dia ";
-    countInput.min = divergentEntry ? "0" : "1";
-    countInput.placeholder = divergentEntry ? "Ex.: 1" : "Ex.: 50";
+    countInput.parentElement.firstChild.textContent = skuPeriod ? "SKUs conferidos " : "SKUs contados no dia ";
+    countInput.min = "1";
+    countInput.placeholder = "Ex.: 50";
   }
   const computedValue = computeLaunchFormulaValue(formulaType);
   const resultSuffix = definition.resultSuffix || "%";
@@ -5781,7 +5780,7 @@ function startLaunchEdit(launchId) {
       const counts = getAccuracyCounts(launch);
       if (counts) {
         qs('#launchForm [name="dailyAccuracy"]').value = counts.correct;
-        qs('#launchForm [name="countedSkusDay"]').value = launch.formulaData.divergentSkusDay ?? counts.audited - counts.correct;
+        qs('#launchForm [name="countedSkusDay"]').value = counts.audited;
       }
     }
     updateLaunchResultFromFormula();
