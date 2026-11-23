@@ -2126,10 +2126,10 @@ function getCardDetails(indicator) {
     const counts = history.map(row => isSkuAccuracyPeriod({date:row.date}, indicator) || row.correctItems !== undefined
       ? getAccuracyCounts(row) : null);
     const complete = counts.length > 0 && counts.every(Boolean);
-    const totals = complete ? counts.reduce((sum,row) => ({audited:sum.audited+row.audited, divergent:sum.divergent+row.audited-row.correct}), {audited:0,divergent:0}) : null;
+    const totals = complete ? counts.reduce((sum,row) => ({audited:sum.audited+row.audited, correct:sum.correct+row.correct}), {audited:0,correct:0}) : null;
     return [
-      ["SKUs contados", totals ? formatIntegerDisplay(totals.audited) : "Sem dados"],
-      ["SKUs divergentes", totals ? formatIntegerDisplay(totals.divergent) : "Sem dados"],
+      ["SKUs conferidos", totals ? formatIntegerDisplay(totals.audited) : "Sem dados"],
+      ["SKUs corretos", totals ? formatIntegerDisplay(totals.correct) : "Sem dados"],
     ];
   }
   const indicatorKey = normalizeTextKey(indicator.name);
